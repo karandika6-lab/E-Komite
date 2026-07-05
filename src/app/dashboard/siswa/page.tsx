@@ -1,25 +1,59 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card } from '@/components/ui/Card';
 import { DataTable } from '@/components/ui/Table';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import { Search, Plus, Download, Upload } from 'lucide-react';
+import { Search, Plus, Download, Upload, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 import { ColumnDef } from '@tanstack/react-table';
-
-// Dummy data for now until we integrate Supabase fully
-const dummySiswa = [
-  { id: '1', nis: '2425001', nama: 'Ahmad Faisal', kelas: 'X-1', angkatan: 2024, status: 'Aktif', statusBayar: 'Lunas' },
-  { id: '2', nis: '2425002', nama: 'Budi Santoso', kelas: 'X-2', angkatan: 2024, status: 'Aktif', statusBayar: 'Tunggakan' },
-  { id: '3', nis: '2324015', nama: 'Siti Aminah', kelas: 'XI-IPA', angkatan: 2023, status: 'Aktif', statusBayar: 'Cicilan' },
-  { id: '4', nis: '2223040', nama: 'Dewi Lestari', kelas: 'XII-IPS', angkatan: 2022, status: 'Aktif', statusBayar: 'Lunas' },
-];
+import { createClient } from '@/lib/supabase/client';
+import { toast } from 'sonner';
 
 export default function SiswaPage() {
   const [searchQuery, setSearchQuery] = useState('');
+  const [dataSiswa, setDataSiswa] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const supabase = createClient();
+
+  useEffect(() => {
+    fetchSiswa();
+  }, []);
+
+  const fetchSiswa = async () => {
+    setIsLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('siswa')
+        .select('*')
+        .order('nama_lengkap', { ascending: true });
+
+      if (error) throw error;
+      
+      const formatted = data?.map((item: any) => ({
+        id: item.id,
+        nis: item.nis,
+        nama: item.nama_lengkap,
+        kelas: item.kelas,
+        angkatan: item.angkatan,
+        status: item.status,
+        statusBayar: 'Lunas' // Placeholder until tagihan logic is ready
+      })) || [];
+      
+      setDataSiswa(formatted);
+    } catch (error: any) {
+      toast.error('Gagal mengambil data siswa: ' + error.message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const filteredData = dataSiswa.filter(item => 
+    item.nama.toLowerCase().includes(searchQuery.toLowerCase()) || 
+    item.nis.toLowerCase().includes(searchQuery.toLowerCase())
+  );
 
   const columns: ColumnDef<any>[] = [
     {
@@ -107,7 +141,7 @@ export default function SiswaPage() {
         </div>
       </div>
 
-      <Card glass className="p-0 border-none bg-transparent">
+      <div className="mt-4">
         <div className="flex flex-col md:flex-row gap-4 mb-6">
           <div className="flex-1 max-w-sm">
             <Input
@@ -120,8 +154,15 @@ export default function SiswaPage() {
           {/* Add more filters here later (Kelas, Angkatan) */}
         </div>
 
-        <DataTable columns={columns} data={dummySiswa} />
-      </Card>
+        {isLoading ? (
+          <div className="py-20 flex flex-col items-center justify-center">
+            <Loader2 size={32} className="text-blue-500 animate-spin mb-4" />
+            <p className="text-sm text-gray-400">Memuat data siswa...</p>
+          </div>
+        ) : (
+          <DataTable columns={columns} data={filteredData} />
+        )}
+      </div>
     </div>
   );
 }

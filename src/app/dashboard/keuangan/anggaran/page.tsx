@@ -9,14 +9,116 @@ import { Button } from '@/components/ui/Button';
 import { Plus, Download, TrendingUp, PieChart, Wallet, X, Save } from 'lucide-react';
 import { ColumnDef } from '@tanstack/react-table';
 
-const dummyAnggaran = [
-  { id: '1', kategori: 'Operasional', sumber: 'Uang Komite', anggaran: 50000000, realisasi: 15000000 },
-  { id: '2', kategori: 'Honor', sumber: 'Uang Komite', anggaran: 120000000, realisasi: 60000000 },
-  { id: '3', kategori: 'Kegiatan Siswa', sumber: 'PNB', anggaran: 30000000, realisasi: 28000000 },
-];
+import { createClient } from '@/lib/supabase/client';
+import { toast } from 'sonner';
 
 export default function AnggaranPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [dataAnggaran, setDataAnggaran] = useState<any[]>([]);
+  const [kategoriList, setKategoriList] = useState<any[]>([]);
+  const [sumberDanaList, setSumberDanaList] = useState<any[]>([]);
+  const [tahunAjaranList, setTahunAjaranList] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  
+  // Form State
+  const [formTahun, setFormTahun] = useState('');
+  const [formKategori, setFormKategori] = useState('');
+  const [formSumber, setFormSumber] = useState('');
+  const [formNominal, setFormNominal] = useState('');
+
+  const supabase = createClient();
+
+  React.useEffect(() => {
+    fetchData();
+  }, []);
+
+  const fetchData = async () => {
+    setIsLoading(true);
+    try {
+      // 1. Fetch Master Data for dropdowns
+      const [resKategori, resSumber, resTahun] = await Promise.all([
+        supabase.from('kategori_pengeluaran').select('*'),
+        supabase.from('jenis_pembayaran').select('*'),
+        supabase.from('tahun_ajaran').select('*').order('created_at', { ascending: false })
+      ]);
+      
+      setKategoriList(resKategori.data || []);
+      setSumberDanaList(resSumber.data || []);
+      setTahunAjaranList(resTahun.data || []);
+      
+      if(resTahun.data && resTahun.data.length > 0) {
+        setFormTahun((resTahun.data as any[])[0].id);
+      }
+
+      // 2. Fetch Anggaran List with relations
+      const { data: anggaranData, error: angErr } = await supabase
+        .from('anggaran')
+        .select(`
+          id, nominal_anggaran, kategori_pengeluaran_id,
+          kategori_pengeluaran(nama),
+          jenis_pembayaran(nama)
+        `);
+        
+      if(angErr) throw angErr;
+
+      // 3. Fetch Pengeluaran to calculate Realisasi
+      const { data: pengeluaranData, error: pengErr } = await supabase
+        .from('pengeluaran')
+        .select('kategori_id, jumlah');
+        
+      if(pengErr) throw pengErr;
+
+      // Group Pengeluaran by kategori_id
+      const realisasiMap: Record<string, number> = {};
+      (pengeluaranData as any[])?.forEach(p => {
+        if(!realisasiMap[p.kategori_id]) realisasiMap[p.kategori_id] = 0;
+        realisasiMap[p.kategori_id] += p.jumlah;
+      });
+
+      const formatted = anggaranData?.map((a: any) => ({
+        id: a.id,
+        kategori: a.kategori_pengeluaran?.nama || 'Tanpa Kategori',
+        sumber: a.jenis_pembayaran?.nama || 'Bebas',
+        anggaran: a.nominal_anggaran,
+        realisasi: realisasiMap[a.kategori_pengeluaran_id] || 0
+      })) || [];
+
+      setDataAnggaran(formatted);
+    } catch(err: any) {
+      toast.error('Gagal memuat anggaran: ' + err.message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSave = async () => {
+    if(!formTahun || !formKategori || !formNominal) {
+      return toast.error('Harap lengkapi semua field yang wajib');
+    }
+
+    setIsSaving(true);
+    try {
+      const { error } = await (supabase.from('anggaran') as any).insert([{
+        tahun_ajaran_id: formTahun,
+        kategori_pengeluaran_id: formKategori,
+        jenis_pembayaran_id: formSumber || null,
+        nominal_anggaran: parseFloat(formNominal)
+      }]);
+      if(error) {
+        if(error.code === '23505') throw new Error('Anggaran untuk kategori ini sudah ada di tahun ajaran tersebut');
+        throw error;
+      }
+      toast.success('RAB berhasil disimpan');
+      setIsModalOpen(false);
+      setFormNominal('');
+      fetchData();
+    } catch(err: any) {
+      toast.error('Gagal menyimpan RAB: ' + err.message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
   
   // Desktop Table Columns
   const columns: ColumnDef<any>[] = [
@@ -69,11 +171,11 @@ export default function AnggaranPage() {
     },
   ];
 
-  const totalAnggaran = dummyAnggaran.reduce((sum, a) => sum + a.anggaran, 0);
-  const totalRealisasi = dummyAnggaran.reduce((sum, a) => sum + a.realisasi, 0);
+  const totalAnggaran = dataAnggaran.reduce((sum, a) => sum + a.anggaran, 0);
+  const totalRealisasi = dataAnggaran.reduce((sum, a) => sum + a.realisasi, 0);
   const totalSisa = totalAnggaran - totalRealisasi;
 
-  const totalProgress = (totalRealisasi / totalAnggaran) * 100;
+  const totalProgress = totalAnggaran > 0 ? (totalRealisasi / totalAnggaran) * 100 : 0;
 
   return (
     <div className="max-w-6xl mx-auto md:space-y-6 pb-20 md:pb-0">
@@ -171,15 +273,19 @@ export default function AnggaranPage() {
         <h3 className="text-[13px] font-bold text-gray-400 uppercase tracking-widest px-1">Rincian Per Kategori</h3>
         
         <div className="bg-[#1c1c1e] rounded-[24px] border border-white/5 overflow-hidden">
-          {dummyAnggaran.map((item, index) => {
-            const pct = (item.realisasi / item.anggaran) * 100;
+          {isLoading ? (
+            <div className="p-8 text-center text-gray-400">Memuat data RAB...</div>
+          ) : dataAnggaran.length === 0 ? (
+            <div className="p-8 text-center text-gray-500">Belum ada anggaran untuk periode ini.</div>
+          ) : dataAnggaran.map((item, index) => {
+            const pct = item.anggaran > 0 ? (item.realisasi / item.anggaran) * 100 : 0;
             const sisa = item.anggaran - item.realisasi;
             let colorClass = 'bg-green-500';
             if (pct > 75) colorClass = 'bg-yellow-500';
             if (pct > 90) colorClass = 'bg-red-500';
 
             return (
-              <div key={item.id} className={`p-5 ${index !== dummyAnggaran.length - 1 ? 'border-b border-white/5' : ''}`}>
+              <div key={item.id} className={`p-5 ${index !== dataAnggaran.length - 1 ? 'border-b border-white/5' : ''}`}>
                 <div className="flex justify-between items-start mb-3">
                   <div>
                     <h4 className="font-bold text-[15px] text-white leading-tight">{item.kategori}</h4>
@@ -211,7 +317,11 @@ export default function AnggaranPage() {
 
       {/* Desktop Table View */}
       <div className="hidden md:block bg-[#1a1a1c] border border-white/5 rounded-3xl p-6">
-        <DataTable columns={columns} data={dummyAnggaran} />
+        {isLoading ? (
+          <div className="p-8 text-center text-gray-400">Memuat data RAB...</div>
+        ) : (
+          <DataTable columns={columns} data={dataAnggaran} />
+        )}
       </div>
 
       {/* Floating Action Button for Mobile / Fixed Bottom Bar */}
@@ -243,32 +353,43 @@ export default function AnggaranPage() {
                </button>
             </div>
             
-            <div className="p-6 space-y-5">
+             <div className="p-6 space-y-5">
                <div className="space-y-2">
                  <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-1">Tahun Ajaran</label>
-                 <select className="w-full rounded-2xl bg-[#1c1c1e] border border-white/10 py-3.5 px-4 text-sm text-white focus:outline-none focus:border-blue-500 transition-colors">
-                   <option>2025/2026</option>
-                   <option>2024/2025</option>
+                 <select 
+                   value={formTahun} onChange={(e) => setFormTahun(e.target.value)}
+                   className="w-full rounded-2xl bg-[#1c1c1e] border border-white/10 py-3.5 px-4 text-sm text-white focus:outline-none focus:border-blue-500 transition-colors"
+                 >
+                   <option value="">Pilih Tahun Ajaran...</option>
+                   {tahunAjaranList.map(t => (
+                     <option key={t.id} value={t.id}>{t.nama}</option>
+                   ))}
                  </select>
                </div>
                
                <div className="space-y-2">
                  <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-1">Kategori Pengeluaran</label>
-                 <select className="w-full rounded-2xl bg-[#1c1c1e] border border-white/10 py-3.5 px-4 text-sm text-white focus:outline-none focus:border-blue-500 transition-colors">
-                   <option>Pilih Kategori...</option>
-                   <option>Operasional</option>
-                   <option>Honor Pegawai / Guru</option>
-                   <option>Alat Tulis Kantor (ATK)</option>
+                 <select 
+                   value={formKategori} onChange={(e) => setFormKategori(e.target.value)}
+                   className="w-full rounded-2xl bg-[#1c1c1e] border border-white/10 py-3.5 px-4 text-sm text-white focus:outline-none focus:border-blue-500 transition-colors"
+                 >
+                   <option value="">Pilih Kategori...</option>
+                   {kategoriList.map(k => (
+                     <option key={k.id} value={k.id}>{k.nama}</option>
+                   ))}
                  </select>
                </div>
 
                <div className="space-y-2">
-                 <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-1">Sumber Dana</label>
-                 <select className="w-full rounded-2xl bg-[#1c1c1e] border border-white/10 py-3.5 px-4 text-sm text-white focus:outline-none focus:border-blue-500 transition-colors">
-                   <option>Pilih Sumber Dana...</option>
-                   <option>Uang Komite</option>
-                   <option>Uang Pangkal / PNB</option>
-                   <option>Buku Paket</option>
+                 <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-1">Sumber Dana (Opsional)</label>
+                 <select 
+                   value={formSumber} onChange={(e) => setFormSumber(e.target.value)}
+                   className="w-full rounded-2xl bg-[#1c1c1e] border border-white/10 py-3.5 px-4 text-sm text-white focus:outline-none focus:border-blue-500 transition-colors"
+                 >
+                   <option value="">Bebas / Tanpa Sumber Spesifik</option>
+                   {sumberDanaList.map(s => (
+                     <option key={s.id} value={s.id}>{s.nama}</option>
+                   ))}
                  </select>
                </div>
                
@@ -276,6 +397,7 @@ export default function AnggaranPage() {
                  <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-1">Nominal Anggaran (Rp)</label>
                  <input 
                    type="number"
+                   value={formNominal} onChange={(e) => setFormNominal(e.target.value)}
                    placeholder="Contoh: 50000000"
                    className="w-full rounded-2xl bg-black/20 border border-white/10 py-3.5 px-4 text-sm text-white focus:outline-none focus:border-blue-500 transition-colors"
                  />
@@ -290,10 +412,11 @@ export default function AnggaranPage() {
                 Batal
               </button>
               <button 
-                onClick={() => setIsModalOpen(false)}
-                className="flex-1 py-3 rounded-xl font-bold text-[14px] text-white bg-blue-600 hover:bg-blue-500 transition-colors flex justify-center items-center gap-2 shadow-lg shadow-blue-600/30"
+                onClick={handleSave}
+                disabled={isSaving}
+                className="flex-1 py-3 rounded-xl font-bold text-[14px] text-white bg-blue-600 hover:bg-blue-500 transition-colors flex justify-center items-center gap-2 shadow-lg shadow-blue-600/30 disabled:opacity-50"
               >
-                <Save size={16} />
+                {isSaving ? <span className="animate-spin text-white">...</span> : <Save size={16} />}
                 Simpan RAB
               </button>
             </div>

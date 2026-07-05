@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import { Card } from '@/components/ui/Card';
 import { DataTable } from '@/components/ui/Table';
 import { Badge } from '@/components/ui/Badge';
@@ -11,13 +11,78 @@ import Link from 'next/link';
 import { ColumnDef } from '@tanstack/react-table';
 import { format } from 'date-fns';
 import { id } from 'date-fns/locale';
-
-const dummyPengeluaran = [
-  { id: '1', no_bukti: 'PG-20260524-001', kategori: 'Operasional', nama: 'Beli ATK Kantor', penerima: 'Toko Buku Sejahtera', jumlah: 150000, tanggal: new Date().toISOString() },
-  { id: '2', no_bukti: 'PG-20260523-001', kategori: 'Honor', nama: 'Honor Pembina Pramuka', penerima: 'Bpk. Ridwan', jumlah: 500000, tanggal: new Date(Date.now() - 86400000).toISOString() },
-];
+import { toast } from 'sonner';
+import { exportToExcel } from '@/utils/reportGenerator';
+import { createClient } from '@/lib/supabase/client';
 
 export default function PengeluaranPage() {
+  const [periodeFilter, setPeriodeFilter] = useState('');
+  const [dataPengeluaran, setDataPengeluaran] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const supabase = createClient();
+
+  React.useEffect(() => {
+    fetchPengeluaran();
+  }, []);
+
+  const fetchPengeluaran = async () => {
+    setIsLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('pengeluaran')
+        .select(`
+          *,
+          kategori_pengeluaran (nama)
+        `)
+        .order('tanggal', { ascending: false });
+
+      if (error) throw error;
+      
+      const formatted = data?.map((item: any) => ({
+        id: item.id,
+        no_bukti: item.no_bukti,
+        tanggal: item.tanggal,
+        kategori: item.kategori_pengeluaran?.nama || '-',
+        nama: item.nama_pengeluaran,
+        penerima: item.penerima || '-',
+        jumlah: item.jumlah
+      })) || [];
+
+      setDataPengeluaran(formatted);
+    } catch (error: any) {
+      toast.error('Gagal mengambil data pengeluaran: ' + error.message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const displayPengeluaran = dataPengeluaran.filter(d => {
+    if (periodeFilter) {
+      const date = new Date(d.tanggal);
+      const month = (date.getMonth() + 1).toString().padStart(2, '0');
+      return month === periodeFilter;
+    }
+    return true;
+  });
+
+  const handleExport = () => {
+    const exportCols = [
+      { header: 'No. Bukti', key: 'no_bukti', width: 20 },
+      { header: 'Tanggal', key: 'tanggal', width: 20 },
+      { header: 'Kategori', key: 'kategori', width: 20 },
+      { header: 'Nama Pengeluaran', key: 'nama', width: 30 },
+      { header: 'Penerima', key: 'penerima', width: 25 },
+      { header: 'Jumlah', key: 'jumlah', width: 20 },
+    ];
+    
+    const dataToExport = displayPengeluaran.map(d => ({
+      ...d,
+      tanggal: format(new Date(d.tanggal), 'dd MMM yyyy', { locale: id }),
+    }));
+    
+    exportToExcel('Data Pengeluaran', exportCols, dataToExport, 'Data_Pengeluaran_EKomite');
+  };
+
   const columns: ColumnDef<any>[] = [
     {
       accessorKey: 'no_bukti',
@@ -57,7 +122,12 @@ export default function PengeluaranPage() {
       id: 'actions',
       header: 'Aksi',
       cell: ({ row }) => (
-        <Button variant="ghost" size="sm" className="text-text-secondary hover:text-white">
+        <Button 
+          onClick={() => toast.info(`Menampilkan detail transaksi ${row.getValue('no_bukti')}`)}
+          variant="ghost" 
+          size="sm" 
+          className="text-text-secondary hover:text-white"
+        >
           Detail
         </Button>
       ),
@@ -73,7 +143,7 @@ export default function PengeluaranPage() {
         </div>
         
         <div className="flex items-center gap-3">
-          <Button variant="outline" size="sm" className="hidden md:flex">
+          <Button onClick={handleExport} variant="outline" size="sm" className="hidden md:flex">
             <Download size={16} className="mr-2" />
             Export Data
           </Button>
@@ -86,7 +156,7 @@ export default function PengeluaranPage() {
         </div>
       </div>
 
-      <Card glass className="p-0 border-none bg-transparent">
+      <div className="mt-4">
         <div className="flex flex-col md:flex-row gap-4 mb-6">
           <div className="flex-1 max-w-sm">
             <Input
@@ -94,14 +164,28 @@ export default function PengeluaranPage() {
               icon={Search}
             />
           </div>
-          <Button variant="outline" className="md:w-auto w-full">
-            <Filter size={16} className="mr-2" />
-            Filter Periode
-          </Button>
+          <div className="relative md:w-auto w-full">
+            <Filter size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <select 
+               value={periodeFilter}
+               onChange={(e) => setPeriodeFilter(e.target.value)}
+               className="w-full appearance-none pl-9 pr-8 py-2 rounded-lg bg-transparent border border-white/20 text-sm text-white focus:outline-none focus:border-white/40 cursor-pointer h-10"
+            >
+               <option value="" className="bg-bg-elevated text-white">Semua Periode</option>
+               <option value="05" className="bg-bg-elevated text-white">Mei 2026</option>
+               <option value="06" className="bg-bg-elevated text-white">Juni 2026</option>
+            </select>
+          </div>
         </div>
 
-        <DataTable columns={columns} data={dummyPengeluaran} />
-      </Card>
+        <div className="mt-4">
+          {isLoading ? (
+            <div className="py-20 text-center text-gray-400">Memuat data pengeluaran...</div>
+          ) : (
+            <DataTable columns={columns} data={displayPengeluaran} />
+          )}
+        </div>
+      </div>
     </div>
   );
 }

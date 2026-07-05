@@ -12,12 +12,51 @@ import { ColumnDef } from '@tanstack/react-table';
 import { format } from 'date-fns';
 import { id } from 'date-fns/locale';
 
-const dummyPembayaran = [
-  { id: '1', no_kwitansi: 'KW-20260524-001', siswa: 'Ahmad Faisal', kelas: 'X-1', jenis: 'Uang Komite', jumlah: 250000, metode: 'TUNAI', tanggal: new Date().toISOString() },
-  { id: '2', no_kwitansi: 'KW-20260524-002', siswa: 'Siti Aminah', kelas: 'XI-IPA', jenis: 'Semesteran', jumlah: 1500000, metode: 'TRANSFER', tanggal: new Date().toISOString() },
-];
+import { createClient } from '@/lib/supabase/client';
+import { toast } from 'sonner';
 
 export default function PembayaranPage() {
+  const [dataPembayaran, setDataPembayaran] = React.useState<any[]>([]);
+  const [isLoading, setIsLoading] = React.useState(true);
+  const supabase = createClient();
+
+  React.useEffect(() => {
+    fetchPembayaran();
+  }, []);
+
+  const fetchPembayaran = async () => {
+    setIsLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('pembayaran')
+        .select(`
+          *,
+          siswa (nama_lengkap, kelas),
+          tagihan (jenis_pembayaran (nama))
+        `)
+        .order('tanggal_bayar', { ascending: false });
+
+      if (error) throw error;
+      
+      const formatted = data?.map((item: any) => ({
+        id: item.id,
+        no_kwitansi: item.no_kwitansi,
+        tanggal: item.tanggal_bayar || item.created_at,
+        siswa: item.siswa?.nama_lengkap || '-',
+        kelas: item.siswa?.kelas || '-',
+        jenis: item.tagihan?.jenis_pembayaran?.nama || '-',
+        metode: item.metode_bayar,
+        jumlah: item.jumlah
+      })) || [];
+
+      setDataPembayaran(formatted);
+    } catch (error: any) {
+      toast.error('Gagal mengambil data pembayaran: ' + error.message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const columns: ColumnDef<any>[] = [
     {
       accessorKey: 'no_kwitansi',
@@ -93,7 +132,7 @@ export default function PembayaranPage() {
         </div>
       </div>
 
-      <Card glass className="p-0 border-none bg-transparent">
+      <div className="mt-4">
         <div className="flex flex-col md:flex-row gap-4 mb-6">
           <div className="flex-1 max-w-sm">
             <Input
@@ -107,8 +146,12 @@ export default function PembayaranPage() {
           </Button>
         </div>
 
-        <DataTable columns={columns} data={dummyPembayaran} />
-      </Card>
+        {isLoading ? (
+          <div className="py-20 text-center text-gray-400">Memuat data pembayaran...</div>
+        ) : (
+          <DataTable columns={columns} data={dataPembayaran} />
+        )}
+      </div>
     </div>
   );
 }

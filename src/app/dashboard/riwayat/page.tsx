@@ -5,22 +5,79 @@ import { TrendingUp, TrendingDown, Search, Calendar as CalendarIcon, Filter } fr
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
-import { format } from 'date-fns';
+import { format, isSameMonth } from 'date-fns';
 import { id } from 'date-fns/locale';
-
-// Dummy data
-const historyData = [
-  { id: '1', type: 'income', title: 'Pembayaran Uang Komite', amount: 250000, name: 'Ahmad Faisal (X-1)', date: new Date().toISOString(), ref: 'KW-20260524-001' },
-  { id: '2', type: 'expense', title: 'Beli ATK Kantor', amount: 150000, name: 'Toko Buku Sejahtera', date: new Date().toISOString(), ref: 'PG-20260524-001' },
-  { id: '3', type: 'income', title: 'Pembayaran Uang Semester', amount: 1500000, name: 'Siti Aminah (XI-IPA)', date: new Date(Date.now() - 3600000).toISOString(), ref: 'KW-20260524-002' },
-  { id: '4', type: 'income', title: 'Pembayaran Uang Komite', amount: 250000, name: 'Budi Santoso (XII-IPS)', date: new Date(Date.now() - 86400000).toISOString(), ref: 'KW-20260523-001' },
-  { id: '5', type: 'expense', title: 'Honor Pembina Pramuka', amount: 500000, name: 'Bpk. Ridwan', date: new Date(Date.now() - 86400000 * 2).toISOString(), ref: 'PG-20260522-001' },
-];
+import { toast } from 'sonner';
+import { createClient } from '@/lib/supabase/client';
 
 export default function RiwayatPage() {
-  const [filter, setFilter] = useState<'all' | 'income' | 'expense'>('all');
+  const [filter, setFilter] = useState<'all' | 'income' | 'expense' | 'month'>('all');
+  const [historyData, setHistoryData] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const supabase = createClient();
+
+  React.useEffect(() => {
+    fetchHistory();
+  }, []);
+
+  const fetchHistory = async () => {
+    setIsLoading(true);
+    try {
+      // Fetch Incomes (Pembayaran)
+      const { data: incomeData, error: incomeErr } = await supabase
+        .from('pembayaran')
+        .select(`
+          id, tanggal_bayar, no_kwitansi, jumlah,
+          tagihan (jenis_pembayaran (nama)),
+          siswa (nama_lengkap, kelas)
+        `);
+
+      if (incomeErr) throw incomeErr;
+
+      // Fetch Expenses (Pengeluaran)
+      const { data: expenseData, error: expenseErr } = await supabase
+        .from('pengeluaran')
+        .select(`
+          id, tanggal, no_bukti, jumlah, nama_pengeluaran, penerima
+        `);
+
+      if (expenseErr) throw expenseErr;
+
+      // Format and merge
+      const formattedIncomes = (incomeData || []).map(i => ({
+        id: `inc_${i.id}`,
+        type: 'income',
+        title: i.tagihan?.jenis_pembayaran?.nama || 'Pembayaran Tagihan',
+        amount: i.jumlah,
+        name: `${i.siswa?.nama_lengkap} (${i.siswa?.kelas})`,
+        date: i.tanggal_bayar,
+        ref: i.no_kwitansi
+      }));
+
+      const formattedExpenses = (expenseData || []).map(e => ({
+        id: `exp_${e.id}`,
+        type: 'expense',
+        title: e.nama_pengeluaran,
+        amount: e.jumlah,
+        name: e.penerima || 'Pengeluaran',
+        date: e.tanggal,
+        ref: e.no_bukti
+      }));
+
+      const merged = [...formattedIncomes, ...formattedExpenses].sort((a, b) => 
+        new Date(b.date).getTime() - new Date(a.date).getTime()
+      );
+
+      setHistoryData(merged);
+    } catch (error: any) {
+      toast.error('Gagal mengambil histori: ' + error.message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const filteredData = historyData.filter(item => {
+    if (filter === 'month') return isSameMonth(new Date(item.date), new Date());
     if (filter === 'all') return true;
     return item.type === filter;
   });
@@ -129,7 +186,14 @@ export default function RiwayatPage() {
             >
               Pengeluaran
             </button>
-            <button className="hidden md:flex items-center gap-2 px-5 py-2 rounded-full text-[13px] font-semibold bg-white/5 text-gray-400 border border-white/10 hover:text-white ml-2 transition-colors">
+            <button 
+              onClick={() => setFilter('month')}
+              className={`hidden md:flex items-center gap-2 px-5 py-2 rounded-full text-[13px] font-semibold transition-colors ml-2 ${
+                filter === 'month' 
+                  ? 'bg-blue-500 text-white shadow-md shadow-blue-500/20' 
+                  : 'bg-white/5 text-gray-400 border border-white/10 hover:text-white'
+              }`}
+            >
               <CalendarIcon size={14} />
               Bulan Ini
             </button>
@@ -138,8 +202,11 @@ export default function RiwayatPage() {
 
         {/* Transaction List */}
         <div className="space-y-8">
-          {Object.entries(groupedData).map(([date, items]) => (
-            <div key={date}>
+          {isLoading ? (
+            <div className="py-20 text-center text-gray-400">Memuat riwayat transaksi...</div>
+          ) : (
+            Object.entries(groupedData).map(([date, items]) => (
+              <div key={date}>
               {/* Date Separator */}
               <h3 className="text-[11px] font-bold text-gray-400/80 uppercase tracking-widest mb-3 px-1 flex items-center gap-3">
                 {date}
@@ -149,7 +216,10 @@ export default function RiwayatPage() {
               {/* List Wrapper */}
               <div className="bg-[#1c1c1e] md:bg-transparent rounded-[20px] md:rounded-none border border-white/5 md:border-none overflow-hidden space-y-0 md:space-y-3">
                 {items.map((item, index) => (
-                  <div key={item.id} className={`flex items-center gap-3 p-4 md:rounded-2xl md:bg-[#242426] md:border md:border-white/5 hover:bg-white/[0.03] transition-colors cursor-pointer ${
+                  <div 
+                    key={item.id} 
+                    onClick={() => toast.info(`Menampilkan detail transaksi ${item.ref}`)}
+                    className={`flex items-center gap-3 p-4 md:rounded-2xl md:bg-[#242426] md:border md:border-white/5 hover:bg-white/[0.03] transition-colors cursor-pointer ${
                     index !== items.length - 1 ? 'border-b border-white/5 md:border-none' : ''
                   }`}>
                     {/* Icon */}
@@ -177,10 +247,10 @@ export default function RiwayatPage() {
                   </div>
                 ))}
               </div>
-            </div>
-          ))}
-          
-          {filteredData.length === 0 && (
+              </div>
+            ))
+          )}
+          {!isLoading && filteredData.length === 0 && (
             <div className="py-12 flex flex-col items-center justify-center text-gray-500">
               <Search size={32} className="mb-3 opacity-20" />
               <p className="text-sm">Tidak ada transaksi ditemukan.</p>

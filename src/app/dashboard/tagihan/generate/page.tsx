@@ -6,20 +6,82 @@ import { ArrowLeft, FileText, Send, CheckCircle2, Users, Receipt, Calendar } fro
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import Link from 'next/link';
+import { createClient } from '@/lib/supabase/client';
 
 export default function GenerateTagihanPage() {
   const router = useRouter();
+  const supabase = createClient();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [targetType, setTargetType] = useState('kelas'); // 'kelas', 'angkatan', 'semua'
+  const [jenisList, setJenisList] = useState<any[]>([]);
+  const [tahunList, setTahunList] = useState<any[]>([]);
+  const [selectedJenis, setSelectedJenis] = useState('');
+  const [selectedTahun, setSelectedTahun] = useState('');
+  const [periode, setPeriode] = useState('Juli');
+  const [jatuhTempo, setJatuhTempo] = useState('');
+  const [selectedKelas, setSelectedKelas] = useState<string[]>([]);
+  const [selectedAngkatan, setSelectedAngkatan] = useState<string[]>([]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  React.useEffect(() => {
+    const fetchMasterData = async () => {
+      const [jenisRes, tahunRes] = await Promise.all([
+        supabase.from('jenis_pembayaran').select('*').eq('is_active', true),
+        supabase.from('tahun_ajaran').select('*').eq('is_active', true)
+      ]);
+      if (jenisRes.data) {
+        setJenisList(jenisRes.data);
+        if (jenisRes.data.length > 0) setSelectedJenis(jenisRes.data[0].id);
+      }
+      if (tahunRes.data) {
+        setTahunList(tahunRes.data);
+        if (tahunRes.data.length > 0) setSelectedTahun(tahunRes.data[0].id);
+      }
+    };
+    fetchMasterData();
+  }, []);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!selectedJenis || !selectedTahun) return toast.error('Lengkapi data tagihan');
+    if (targetType === 'kelas' && selectedKelas.length === 0) return toast.error('Pilih minimal satu kelas');
+    if (targetType === 'angkatan' && selectedAngkatan.length === 0) return toast.error('Pilih minimal satu angkatan');
+
     setIsSubmitting(true);
-    setTimeout(() => {
-      setIsSubmitting(false);
-      toast.success('Tagihan massal berhasil di-generate!');
+    try {
+      // Build query for students
+      let query = supabase.from('siswa').select('id');
+      if (targetType === 'kelas') query = query.in('kelas', selectedKelas);
+      if (targetType === 'angkatan') query = query.in('angkatan', selectedAngkatan.map(Number));
+      query = query.eq('status', 'Aktif');
+
+      const { data: siswaData, error: siswaErr } = await query;
+      if (siswaErr) throw siswaErr;
+      if (!siswaData || siswaData.length === 0) throw new Error('Tidak ada siswa yang sesuai target');
+
+      const jenis = jenisList.find(j => j.id === selectedJenis);
+
+      // Mass insert tagihan
+      const tagihanInserts = siswaData.map(s => ({
+        siswa_id: s.id,
+        jenis_pembayaran_id: selectedJenis,
+        tahun_ajaran_id: selectedTahun,
+        periode,
+        nominal: jenis.nominal_default,
+        total_tagihan: jenis.nominal_default,
+        sisa_tagihan: jenis.nominal_default,
+        jatuh_tempo: jatuhTempo || null
+      }));
+
+      const { error: insErr } = await supabase.from('tagihan').insert(tagihanInserts);
+      if (insErr) throw insErr;
+
+      toast.success(`Berhasil membuat ${tagihanInserts.length} tagihan!`);
       router.push('/dashboard/tagihan');
-    }, 2000);
+    } catch (error: any) {
+      toast.error('Gagal generate: ' + error.message);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -49,26 +111,38 @@ export default function GenerateTagihanPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             <div className="space-y-2">
               <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-1">Jenis Pembayaran</label>
-              <select className="w-full rounded-2xl bg-[#1c1c1e] border border-white/10 py-3.5 px-4 text-sm text-white focus:outline-none focus:border-blue-500 transition-colors">
-                <option>Uang Komite (Bulanan)</option>
-                <option>Uang Pangkal (Sekali Bayar)</option>
-                <option>Seragam Sekolah</option>
+              <select 
+                value={selectedJenis}
+                onChange={e => setSelectedJenis(e.target.value)}
+                className="w-full rounded-2xl bg-[#1c1c1e] border border-white/10 py-3.5 px-4 text-sm text-white focus:outline-none focus:border-blue-500 transition-colors"
+              >
+                {jenisList.map(j => (
+                  <option key={j.id} value={j.id}>{j.nama} - Rp{j.nominal_default.toLocaleString('id-ID')}</option>
+                ))}
               </select>
             </div>
             <div className="space-y-2">
               <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-1">Tahun Ajaran</label>
-              <select className="w-full rounded-2xl bg-[#1c1c1e] border border-white/10 py-3.5 px-4 text-sm text-white focus:outline-none focus:border-blue-500 transition-colors">
-                <option>2025/2026</option>
-                <option>2024/2025</option>
+              <select 
+                value={selectedTahun}
+                onChange={e => setSelectedTahun(e.target.value)}
+                className="w-full rounded-2xl bg-[#1c1c1e] border border-white/10 py-3.5 px-4 text-sm text-white focus:outline-none focus:border-blue-500 transition-colors"
+              >
+                {tahunList.map(t => (
+                  <option key={t.id} value={t.id}>{t.nama}</option>
+                ))}
               </select>
             </div>
             <div className="space-y-2">
               <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-1">Bulan/Periode (Opsional)</label>
-              <select className="w-full rounded-2xl bg-[#1c1c1e] border border-white/10 py-3.5 px-4 text-sm text-white focus:outline-none focus:border-blue-500 transition-colors">
-                <option>Juli</option>
-                <option>Agustus</option>
-                <option>September</option>
-                <option>Semester 1</option>
+              <select 
+                value={periode}
+                onChange={e => setPeriode(e.target.value)}
+                className="w-full rounded-2xl bg-[#1c1c1e] border border-white/10 py-3.5 px-4 text-sm text-white focus:outline-none focus:border-blue-500 transition-colors"
+              >
+                {['Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember', 'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Semester 1', 'Semester 2', 'Tahun 2025'].map(p => (
+                  <option key={p} value={p}>{p}</option>
+                ))}
               </select>
             </div>
             <div className="space-y-2">
@@ -77,6 +151,8 @@ export default function GenerateTagihanPage() {
                 <Calendar size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
                 <input 
                   type="date" 
+                  value={jatuhTempo}
+                  onChange={e => setJatuhTempo(e.target.value)}
                   className="w-full rounded-2xl bg-black/20 border border-white/10 py-3.5 pl-11 pr-4 text-sm text-white focus:outline-none focus:border-blue-500 transition-colors"
                 />
               </div>
@@ -128,12 +204,20 @@ export default function GenerateTagihanPage() {
                <div className="space-y-4">
                  <p className="text-[13px] text-gray-400">Pilih satu atau beberapa kelas yang akan menerima tagihan ini.</p>
                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                   {['X-1', 'X-2', 'XI-IPA 1', 'XI-IPS 1', 'XII-IPA 1'].map((kls) => (
-                     <label key={kls} className="flex items-center gap-3 p-3 rounded-xl bg-[#1c1c1e] border border-white/5 cursor-pointer hover:border-purple-500/30 transition-colors">
-                       <input type="checkbox" className="w-4 h-4 rounded border-gray-600 text-purple-600 focus:ring-purple-600 focus:ring-offset-gray-900 bg-gray-700" />
-                       <span className="text-sm font-medium text-white">{kls}</span>
-                     </label>
-                   ))}
+                    {['X-1', 'X-2', 'XI-IPA 1', 'XI-IPS 1', 'XII-IPA 1'].map((kls) => (
+                      <label key={kls} className="flex items-center gap-3 p-3 rounded-xl bg-[#1c1c1e] border border-white/5 cursor-pointer hover:border-purple-500/30 transition-colors">
+                        <input 
+                          type="checkbox" 
+                          checked={selectedKelas.includes(kls)}
+                          onChange={(e) => {
+                            if (e.target.checked) setSelectedKelas([...selectedKelas, kls]);
+                            else setSelectedKelas(selectedKelas.filter(k => k !== kls));
+                          }}
+                          className="w-4 h-4 rounded border-gray-600 text-purple-600 focus:ring-purple-600 focus:ring-offset-gray-900 bg-gray-700" 
+                        />
+                        <span className="text-sm font-medium text-white">{kls}</span>
+                      </label>
+                    ))}
                  </div>
                </div>
              )}
@@ -141,12 +225,20 @@ export default function GenerateTagihanPage() {
                <div className="space-y-4">
                  <p className="text-[13px] text-gray-400">Pilih tahun angkatan siswa.</p>
                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                   {['Angkatan 2024', 'Angkatan 2023', 'Angkatan 2022'].map((thn) => (
-                     <label key={thn} className="flex items-center gap-3 p-3 rounded-xl bg-[#1c1c1e] border border-white/5 cursor-pointer hover:border-purple-500/30 transition-colors">
-                       <input type="checkbox" className="w-4 h-4 rounded border-gray-600 text-purple-600 focus:ring-purple-600 focus:ring-offset-gray-900 bg-gray-700" />
-                       <span className="text-sm font-medium text-white">{thn}</span>
-                     </label>
-                   ))}
+                    {['2025', '2024', '2023', '2022'].map((thn) => (
+                      <label key={thn} className="flex items-center gap-3 p-3 rounded-xl bg-[#1c1c1e] border border-white/5 cursor-pointer hover:border-purple-500/30 transition-colors">
+                        <input 
+                          type="checkbox" 
+                          checked={selectedAngkatan.includes(thn)}
+                          onChange={(e) => {
+                            if (e.target.checked) setSelectedAngkatan([...selectedAngkatan, thn]);
+                            else setSelectedAngkatan(selectedAngkatan.filter(a => a !== thn));
+                          }}
+                          className="w-4 h-4 rounded border-gray-600 text-purple-600 focus:ring-purple-600 focus:ring-offset-gray-900 bg-gray-700" 
+                        />
+                        <span className="text-sm font-medium text-white">Angkatan {thn}</span>
+                      </label>
+                    ))}
                  </div>
                </div>
              )}

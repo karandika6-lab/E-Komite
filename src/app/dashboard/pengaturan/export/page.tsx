@@ -4,17 +4,153 @@ import React, { useState } from 'react';
 import { ArrowLeft, Download, FileJson, FileSpreadsheet, Database } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from 'sonner';
+import ExcelJS from 'exceljs';
+import { saveAs } from 'file-saver';
+import { createClient } from '@/lib/supabase/client';
+import { format } from 'date-fns';
+import { id as localeId } from 'date-fns/locale';
 
 export default function ExportDataPage() {
   const [isExporting, setIsExporting] = useState(false);
   const [exportType, setExportType] = useState('excel');
+  const supabase = createClient();
   
-  const handleExport = () => {
+  const handleExport = async () => {
     setIsExporting(true);
-    setTimeout(() => {
-      setIsExporting(false);
+    try {
+      // 1. Fetch Real Data
+      const { data: siswaData } = await supabase.from('siswa').select('*');
+      
+      const { data: pemasukanData } = await supabase.from('pembayaran').select(`
+        id, jumlah, tanggal_bayar, keterangan,
+        tagihan(jenis_pembayaran(nama))
+      `);
+      
+      const { data: pengeluaranData } = await supabase.from('pengeluaran').select(`
+        id, jumlah, tanggal, nama_pengeluaran, keterangan,
+        kategori_pengeluaran(nama)
+      `);
+
+      if (exportType === 'json') {
+        const fullData = {
+          siswa: siswaData || [],
+          pemasukan: pemasukanData || [],
+          pengeluaran: pengeluaranData || []
+        };
+        const content = JSON.stringify(fullData, null, 2);
+        const blob = new Blob([content], { type: 'application/json' });
+        saveAs(blob, `Backup_Database_EKomite_${format(new Date(), 'yyyyMMdd')}.json`);
+      } else {
+        // Export Professional Excel via ExcelJS
+        const workbook = new ExcelJS.Workbook();
+        
+        // Helper function for styling sheets
+        const styleSheet = (worksheet: ExcelJS.Worksheet) => {
+          const headerRow = worksheet.getRow(1);
+          headerRow.height = 25;
+          headerRow.eachCell((cell) => {
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF166534' } }; // Green
+            cell.font = { color: { argb: 'FFFFFFFF' }, bold: true, size: 11, name: 'Arial' };
+            cell.alignment = { vertical: 'middle', horizontal: 'center' };
+            cell.border = {
+              top: { style: 'thin', color: { argb: 'FF14532D' } },
+              left: { style: 'thin', color: { argb: 'FF14532D' } },
+              bottom: { style: 'thin', color: { argb: 'FF14532D' } },
+              right: { style: 'thin', color: { argb: 'FF14532D' } }
+            };
+          });
+
+          worksheet.eachRow((row, rowNumber) => {
+            if (rowNumber > 1) {
+              row.height = 22;
+              row.eachCell((cell) => {
+                cell.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
+                cell.border = {
+                  top: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+                  left: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+                  bottom: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+                  right: { style: 'thin', color: { argb: 'FFE2E8F0' } }
+                };
+                if (rowNumber % 2 === 0) {
+                  cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8FAFC' } };
+                }
+              });
+            }
+          });
+        };
+
+        // Sheet 1: Siswa
+        const wsSiswa = workbook.addWorksheet('Data Siswa', { views: [{ showGridLines: false }] });
+        wsSiswa.columns = [
+          { header: 'NIS', key: 'nis', width: 15 },
+          { header: 'Nama Lengkap', key: 'nama', width: 35 },
+          { header: 'Kelas', key: 'kelas', width: 15 },
+          { header: 'Angkatan', key: 'angkatan', width: 15 },
+          { header: 'Status', key: 'status', width: 15 }
+        ];
+        
+        (siswaData || []).forEach(s => {
+          wsSiswa.addRow({ 
+            nis: s.nis, 
+            nama: s.nama_lengkap, 
+            kelas: s.kelas, 
+            angkatan: s.angkatan, 
+            status: s.status
+          });
+        });
+        styleSheet(wsSiswa);
+
+        // Sheet 2: Transaksi Keuangan
+        const wsTransaksi = workbook.addWorksheet('Buku Kas', { views: [{ showGridLines: false }] });
+        wsTransaksi.columns = [
+          { header: 'Tanggal', key: 'tanggal', width: 20 },
+          { header: 'Tipe', key: 'tipe', width: 15 },
+          { header: 'Kategori', key: 'kategori', width: 25 },
+          { header: 'Nominal (Rp)', key: 'nominal', width: 20 },
+          { header: 'Keterangan', key: 'keterangan', width: 45 }
+        ];
+        
+        const allTransactions = [
+          ...(pemasukanData || []).map((p: any) => ({
+            rawDate: new Date(p.tanggal_bayar).getTime(),
+            tanggal: format(new Date(p.tanggal_bayar), 'dd-MM-yyyy', { locale: localeId }),
+            tipe: 'Pemasukan',
+            kategori: p.tagihan?.jenis_pembayaran?.nama || 'Pembayaran',
+            nominal: p.jumlah,
+            keterangan: p.keterangan || '-'
+          })),
+          ...(pengeluaranData || []).map((p: any) => ({
+            rawDate: new Date(p.tanggal).getTime(),
+            tanggal: format(new Date(p.tanggal), 'dd-MM-yyyy', { locale: localeId }),
+            tipe: 'Pengeluaran',
+            kategori: p.kategori_pengeluaran?.nama || 'Pengeluaran',
+            nominal: p.jumlah,
+            keterangan: p.nama_pengeluaran
+          }))
+        ].sort((a, b) => a.rawDate - b.rawDate);
+
+        allTransactions.forEach(t => {
+          wsTransaksi.addRow({
+            tanggal: t.tanggal,
+            tipe: t.tipe,
+            kategori: t.kategori,
+            nominal: t.nominal,
+            keterangan: t.keterangan
+          });
+        });
+        
+        styleSheet(wsTransaksi);
+
+        const buffer = await workbook.xlsx.writeBuffer();
+        saveAs(new Blob([buffer]), `Backup_Database_EKomite_${format(new Date(), 'yyyyMMdd')}.xlsx`);
+      }
+
       toast.success('Data berhasil diexport dan diunduh!');
-    }, 2500);
+    } catch (err: any) {
+      toast.error('Gagal export data: ' + err.message);
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   return (
@@ -79,7 +215,7 @@ export default function ExportDataPage() {
       </div>
 
       {/* Fixed Bottom Bar */}
-      <div className="fixed bottom-0 left-0 w-full p-4 bg-[#111]/80 backdrop-blur-xl border-t border-white/5 z-40 md:relative md:bg-transparent md:border-none md:p-0 md:mt-8 md:block">
+      <div className="fixed bottom-20 left-0 w-full p-4 bg-[#111]/80 backdrop-blur-xl border-t border-white/5 z-40 md:relative md:bottom-0 md:bg-transparent md:border-none md:p-0 md:mt-8 md:block">
         <div className="max-w-2xl mx-auto">
           <button 
             onClick={handleExport} 

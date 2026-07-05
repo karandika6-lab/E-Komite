@@ -1,34 +1,81 @@
-import React from 'react';
+'use client';
+import React, { useState, useEffect } from 'react';
 import { ArrowLeft, User, Phone, MapPin, Receipt, CreditCard, Clock, CheckCircle2, History } from 'lucide-react';
 import Link from 'next/link';
-
-export function generateStaticParams() {
-  return [
-    { id: '1' },
-    { id: '2' },
-    { id: '3' },
-  ];
-}
+import { createClient } from '@/lib/supabase/client';
+import { format } from 'date-fns';
+import { id as localeId } from 'date-fns/locale';
 
 export default function DetailSiswaPage({ params }: { params: { id: string } }) {
-  // Dummy student data
-  const student = {
-    id: params.id,
-    nis: '2425001',
-    nama: 'Ahmad Faisal',
-    kelas: 'X-1',
-    angkatan: 2024,
-    status: 'Aktif',
-    ortu: 'Bpk. Supriyadi',
-    phone: '081234567890',
-    alamat: 'Jl. Merdeka No. 123, Jakarta Selatan',
+  const [student, setStudent] = useState<any>(null);
+  const [tagihanList, setTagihanList] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const supabase = createClient();
+
+  useEffect(() => {
+    fetchSiswaDetail();
+  }, [params.id]);
+
+  const fetchSiswaDetail = async () => {
+    try {
+      setIsLoading(true);
+      // Fetch Siswa
+      const { data: siswaData, error: siswaErr } = await supabase
+        .from('siswa')
+        .select('*')
+        .eq('id', params.id)
+        .single();
+        
+      if (siswaErr) throw siswaErr;
+      
+      setStudent({
+        id: siswaData.id,
+        nis: siswaData.nis,
+        nama: siswaData.nama_lengkap,
+        kelas: siswaData.kelas,
+        angkatan: siswaData.angkatan,
+        status: siswaData.status,
+        ortu: siswaData.nama_ortu || '-',
+        phone: siswaData.no_hp_ortu || '-',
+        alamat: siswaData.alamat || '-',
+      });
+
+      // Fetch Tagihan
+      const { data: tagihanData, error: tagihanErr } = await supabase
+        .from('tagihan')
+        .select(`
+          *,
+          jenis_pembayaran(nama)
+        `)
+        .eq('siswa_id', params.id)
+        .order('created_at', { ascending: false });
+
+      if (tagihanErr) throw tagihanErr;
+
+      const formatted = tagihanData?.map(t => ({
+        id: t.id,
+        nama: t.jenis_pembayaran?.nama + (t.periode ? ` - ${t.periode}` : ''),
+        nominal: t.total_tagihan,
+        terbayar: t.total_dibayar,
+        sisa: t.sisa_tagihan,
+        status: t.status === 'LUNAS' ? 'Lunas' : (t.status === 'CICILAN' ? 'Cicilan' : 'Belum Lunas'),
+        tanggal: format(new Date(t.created_at), 'dd MMM yyyy', { locale: localeId })
+      })) || [];
+
+      setTagihanList(formatted);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const tagihanList = [
-    { id: 'T1', nama: 'Uang Pangkal / PNB', nominal: 3500000, terbayar: 2000000, sisa: 1500000, status: 'Cicilan', tanggal: '10 Jul 2024' },
-    { id: 'T2', nama: 'Uang Komite - Juli', nominal: 250000, terbayar: 250000, sisa: 0, status: 'Lunas', tanggal: '15 Jul 2024' },
-    { id: 'T3', nama: 'Uang Komite - Agustus', nominal: 250000, terbayar: 0, sisa: 250000, status: 'Belum Lunas', tanggal: '15 Agu 2024' },
-  ];
+  const totalTunggakan = tagihanList.reduce((sum, t) => sum + t.sisa, 0);
+  const totalDibayar = tagihanList.reduce((sum, t) => sum + t.terbayar, 0);
+
+  if (isLoading) return <div className="p-20 text-center text-gray-400">Memuat profil siswa...</div>;
+  if (!student) return <div className="p-20 text-center text-red-400">Data siswa tidak ditemukan</div>;
+
 
   return (
     <div className="max-w-5xl mx-auto pb-24 md:pb-8 space-y-6">
@@ -101,7 +148,7 @@ export default function DetailSiswaPage({ params }: { params: { id: string } }) 
 
         {/* Kolom Kanan: Rekap Tagihan */}
         <div className="md:col-span-2 space-y-6">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="bg-[#1c1c1e] md:bg-[#242426] rounded-3xl p-5 border border-red-500/20 shadow-lg relative overflow-hidden">
                <div className="absolute top-0 right-0 w-32 h-32 bg-red-500/10 rounded-full blur-2xl -mr-10 -mt-10" />
                <div className="flex items-center gap-3 mb-2">
@@ -110,7 +157,7 @@ export default function DetailSiswaPage({ params }: { params: { id: string } }) 
                  </div>
                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Total Tunggakan</p>
                </div>
-               <p className="text-2xl md:text-3xl font-black text-white tracking-tight">Rp 1.750.000</p>
+               <p className="text-2xl md:text-3xl font-black text-white tracking-tight">Rp {totalTunggakan.toLocaleString('id-ID')}</p>
             </div>
             
             <div className="bg-[#1c1c1e] md:bg-[#242426] rounded-3xl p-5 border border-green-500/20 shadow-lg relative overflow-hidden">
@@ -121,7 +168,7 @@ export default function DetailSiswaPage({ params }: { params: { id: string } }) 
                  </div>
                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Telah Dibayar</p>
                </div>
-               <p className="text-2xl md:text-3xl font-black text-white tracking-tight">Rp 2.250.000</p>
+               <p className="text-2xl md:text-3xl font-black text-white tracking-tight">Rp {totalDibayar.toLocaleString('id-ID')}</p>
             </div>
           </div>
 

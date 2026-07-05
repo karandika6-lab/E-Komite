@@ -2,17 +2,21 @@
 
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/Button';
-import { ArrowLeft, Download, UploadCloud, FileSpreadsheet, AlertCircle } from 'lucide-react';
+import { AlertCircle, ArrowLeft, Download, FileSpreadsheet, UploadCloud } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import Link from 'next/link';
+import ExcelJS from 'exceljs';
+import { saveAs } from 'file-saver';
+import { createClient } from '@/lib/supabase/client';
 
 export default function ImportSiswaPage() {
   const router = useRouter();
+  const supabase = createClient();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [file, setFile] = useState<File | null>(null);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!file) {
       toast.error('Silakan pilih file terlebih dahulu');
@@ -20,12 +24,139 @@ export default function ImportSiswaPage() {
     }
 
     setIsSubmitting(true);
-    // Simulate API call
-    setTimeout(() => {
+    
+    try {
+      // 1. Read file as ArrayBuffer
+      const buffer = await file.arrayBuffer();
+      
+      // 2. Load into ExcelJS Workbook
+      const workbook = new ExcelJS.Workbook();
+      await workbook.xlsx.load(buffer);
+      
+      // 3. Get first worksheet
+      const worksheet = workbook.worksheets[0];
+      if (!worksheet) {
+        throw new Error('Worksheet tidak ditemukan dalam file');
+      }
+
+      // 4. Extract Data
+      const siswaData: any[] = [];
+      worksheet.eachRow((row, rowNumber) => {
+        // Skip header row
+        if (rowNumber > 1) {
+          const nis = row.getCell(1).text?.toString().trim();
+          const nama = row.getCell(2).text?.toString().trim();
+          const kelas = row.getCell(3).text?.toString().trim();
+          const angkatan = row.getCell(4).text?.toString().trim();
+          const noHp = row.getCell(5).text?.toString().trim() || null;
+          const alamat = row.getCell(6).text?.toString().trim() || null;
+
+          if (nis && nama && kelas && angkatan) {
+             siswaData.push({
+               nis: nis,
+               nama_lengkap: nama,
+               kelas: kelas,
+               angkatan: parseInt(angkatan, 10),
+               no_hp_ortu: noHp,
+               alamat: alamat,
+               status: 'Aktif'
+             });
+          }
+        }
+      });
+
+      if (siswaData.length === 0) {
+         throw new Error('Tidak ada data valid yang ditemukan (kolom wajib: NIS, Nama, Kelas, Angkatan)');
+      }
+
+      // 5. Insert to Supabase (Upsert to handle duplicates by NIS)
+      const { error } = await supabase
+        .from('siswa')
+        .upsert(siswaData, { onConflict: 'nis' });
+
+      if (error) {
+        throw error;
+      }
+
+      toast.success(`${siswaData.length} Data siswa berhasil di-import!`);
+      router.push('/dashboard/siswa'); // redirect to list siswa
+    } catch (err: any) {
+      console.error(err);
+      toast.error(err.message || 'Terjadi kesalahan saat import data');
+    } finally {
       setIsSubmitting(false);
-      toast.success('Data siswa berhasil di-import!');
-      router.push('/dashboard/profil');
-    }, 2000);
+    }
+  };
+
+  const handleDownloadTemplate = async () => {
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('Format Import Siswa', {
+      views: [{ showGridLines: false }]
+    });
+
+    // Setup Header Row
+    const columns = [
+      { header: 'NIS', key: 'nis', width: 15 },
+      { header: 'Nama Lengkap', key: 'nama', width: 35 },
+      { header: 'Kelas', key: 'kelas', width: 15 },
+      { header: 'Angkatan', key: 'angkatan', width: 15 },
+      { header: 'Nomor HP Ortu', key: 'nohp', width: 20 },
+      { header: 'Alamat', key: 'alamat', width: 45 }
+    ];
+    
+    worksheet.columns = columns;
+
+    // Style Header
+    const headerRow = worksheet.getRow(1);
+    headerRow.height = 25;
+    headerRow.eachCell((cell) => {
+      cell.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FF0F172A' } // Dark blue/slate
+      };
+      cell.font = {
+        color: { argb: 'FFFFFFFF' },
+        bold: true,
+        size: 11,
+        name: 'Arial'
+      };
+      cell.alignment = { vertical: 'middle', horizontal: 'center' };
+      cell.border = {
+        top: { style: 'thin', color: { argb: 'FF334155' } },
+        left: { style: 'thin', color: { argb: 'FF334155' } },
+        bottom: { style: 'thin', color: { argb: 'FF334155' } },
+        right: { style: 'thin', color: { argb: 'FF334155' } }
+      };
+    });
+
+    // Add Dummy Data
+    worksheet.addRow({ nis: '2425001', nama: 'Ahmad Faisal', kelas: 'X-1', angkatan: '2024', nohp: '081234567890', alamat: 'Jl. Merdeka No. 10' });
+    worksheet.addRow({ nis: '2425002', nama: 'Siti Aminah', kelas: 'X-1', angkatan: '2024', nohp: '081987654321', alamat: 'Jl. Mawar No. 5' });
+    worksheet.addRow({ nis: '2425003', nama: 'Budi Santoso', kelas: 'X-2', angkatan: '2024', nohp: '082212345678', alamat: 'Jl. Melati No. 8' });
+
+    // Style Data Rows
+    worksheet.eachRow((row, rowNumber) => {
+      if (rowNumber > 1) {
+        row.eachCell((cell) => {
+          cell.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
+          cell.border = {
+            top: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+            left: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+            bottom: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+            right: { style: 'thin', color: { argb: 'FFE2E8F0' } }
+          };
+          // Alternate row colors
+          if (rowNumber % 2 === 0) {
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8FAFC' } };
+          }
+        });
+        row.height = 22;
+      }
+    });
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    saveAs(new Blob([buffer]), "Template_Siswa_Profesional.xlsx");
   };
 
   return (
@@ -52,9 +183,12 @@ export default function ImportSiswaPage() {
              <div className="flex-1">
                 <h3 className="text-[15px] font-bold text-white mb-1">Unduh Template</h3>
                 <p className="text-[13px] text-gray-400 mb-4">Gunakan format file template kami untuk memastikan data berhasil dimasukkan ke sistem.</p>
-                <button className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-[13px] font-semibold text-white hover:bg-white/10 transition-colors">
-                  <Download size={16} className="text-blue-400" />
-                  Template_Siswa.xlsx
+                <button 
+                  onClick={handleDownloadTemplate}
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-[13px] font-semibold text-white hover:bg-white/10 transition-colors"
+                >
+                  <Download size={16} className="text-blue-400 shrink-0" />
+                  <span className="truncate">Template_Siswa.xlsx</span>
                 </button>
              </div>
           </div>
@@ -107,7 +241,7 @@ export default function ImportSiswaPage() {
       </div>
 
       {/* Fixed Bottom Bar */}
-      <div className="fixed bottom-0 left-0 w-full p-4 bg-[#111]/80 backdrop-blur-xl border-t border-white/5 z-40 md:relative md:bg-transparent md:border-none md:p-0 md:mt-8 md:block">
+      <div className="fixed bottom-20 left-0 w-full p-4 bg-[#111]/80 backdrop-blur-xl border-t border-white/5 z-40 md:relative md:bottom-0 md:bg-transparent md:border-none md:p-0 md:mt-8 md:block">
         <div className="max-w-2xl mx-auto flex items-center gap-4">
           <button 
             onClick={handleSubmit} 

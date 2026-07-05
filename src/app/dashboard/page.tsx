@@ -9,8 +9,109 @@ import { StatCard } from '@/components/ui/StatCard';
 import { Card } from '@/components/ui/Card';
 import { motion } from 'framer-motion';
 import Link from 'next/link';
+import { createClient } from '@/lib/supabase/client';
+import { format } from 'date-fns';
+import { id as localeId } from 'date-fns/locale';
 
 export default function DashboardPage() {
+  const [stats, setStats] = React.useState({
+    pemasukanBulanIni: 0,
+    pengeluaranBulanIni: 0,
+    saldoBersih: 0,
+    totalSiswa: 0,
+    tunggakanCount: 0
+  });
+  const [recentActivity, setRecentActivity] = React.useState<any[]>([]);
+  const supabase = createClient();
+
+  React.useEffect(() => {
+    fetchDashboardData();
+  }, []);
+
+  const fetchDashboardData = async () => {
+    try {
+      const now = new Date();
+      const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+      const lastDayOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString();
+
+      // Fetch Siswa Count
+      const { count: siswaCount } = await supabase.from('siswa').select('*', { count: 'exact', head: true }).eq('status', 'Aktif');
+
+      // Fetch Tunggakan Count
+      const { count: tunggakanCount } = await supabase.from('tagihan').select('*', { count: 'exact', head: true }).gt('sisa_tagihan', 0);
+
+      // Fetch Pemasukan Bulan Ini
+      const { data: pemasukanData } = await supabase
+        .from('pembayaran')
+        .select('jumlah')
+        .gte('tanggal_bayar', firstDayOfMonth)
+        .lte('tanggal_bayar', lastDayOfMonth);
+      
+      const pemasukanBulanIni = (pemasukanData || []).reduce((acc, curr) => acc + curr.jumlah, 0);
+
+      // Fetch Pengeluaran Bulan Ini
+      const { data: pengeluaranData } = await supabase
+        .from('pengeluaran')
+        .select('jumlah')
+        .gte('tanggal', firstDayOfMonth)
+        .lte('tanggal', lastDayOfMonth);
+      
+      const pengeluaranBulanIni = (pengeluaranData || []).reduce((acc, curr) => acc + curr.jumlah, 0);
+
+      // Fetch Semua Saldo
+      const { data: allPemasukan } = await supabase.from('pembayaran').select('jumlah');
+      const { data: allPengeluaran } = await supabase.from('pengeluaran').select('jumlah');
+      const totalPemasukan = (allPemasukan || []).reduce((acc, curr) => acc + curr.jumlah, 0);
+      const totalPengeluaran = (allPengeluaran || []).reduce((acc, curr) => acc + curr.jumlah, 0);
+      const saldoBersih = totalPemasukan - totalPengeluaran;
+
+      setStats({
+        pemasukanBulanIni,
+        pengeluaranBulanIni,
+        saldoBersih,
+        totalSiswa: siswaCount || 0,
+        tunggakanCount: tunggakanCount || 0
+      });
+
+      // Fetch Recent Activity (Gabungan Pemasukan & Pengeluaran)
+      const { data: recPemasukan } = await supabase
+        .from('pembayaran')
+        .select(`id, jumlah, tanggal_bayar, siswa(nama_lengkap, kelas), tagihan(jenis_pembayaran(nama))`)
+        .order('created_at', { ascending: false })
+        .limit(5);
+
+      const { data: recPengeluaran } = await supabase
+        .from('pengeluaran')
+        .select(`id, jumlah, tanggal, nama_pengeluaran, penerima`)
+        .order('created_at', { ascending: false })
+        .limit(5);
+
+      const formattedPemasukan = (recPemasukan || []).map(p => ({
+        id: `inc_${p.id}`,
+        type: 'income',
+        title: p.tagihan?.jenis_pembayaran?.nama || 'Pembayaran Tagihan',
+        amount: `+ Rp ${p.jumlah.toLocaleString('id-ID')}`,
+        name: `${p.siswa?.nama_lengkap} (${p.siswa?.kelas})`,
+        time: format(new Date(p.tanggal_bayar), 'dd MMM HH:mm', { locale: localeId }),
+        rawDate: new Date(p.tanggal_bayar).getTime()
+      }));
+
+      const formattedPengeluaran = (recPengeluaran || []).map(p => ({
+        id: `exp_${p.id}`,
+        type: 'expense',
+        title: p.nama_pengeluaran,
+        amount: `- Rp ${p.jumlah.toLocaleString('id-ID')}`,
+        name: p.penerima,
+        time: format(new Date(p.tanggal), 'dd MMM HH:mm', { locale: localeId }),
+        rawDate: new Date(p.tanggal).getTime()
+      }));
+
+      const merged = [...formattedPemasukan, ...formattedPengeluaran].sort((a, b) => b.rawDate - a.rawDate).slice(0, 5);
+      setRecentActivity(merged);
+    } catch (err) {
+      console.error('Error fetching dashboard data:', err);
+    }
+  };
   const quickMenus = [
     { name: 'Data Siswa', icon: Users, href: '/dashboard/siswa', color: 'blue' },
     { name: 'Input Pembayaran', icon: CreditCard, href: '/dashboard/keuangan/pembayaran/input', color: 'green' },
@@ -22,12 +123,7 @@ export default function DashboardPage() {
     { name: 'Pengaturan', icon: Settings, href: '/dashboard/profil', color: 'text-text-secondary' },
   ];
 
-  const recentActivity = [
-    { id: 1, type: 'income', title: 'Pembayaran Uang Komite', amount: '+ Rp 250.000', name: 'Ahmad Faisal (X-1)', time: '10:45 AM' },
-    { id: 2, type: 'expense', title: 'Beli ATK Kantor', amount: '- Rp 150.000', name: 'Toko Buku Sejahtera', time: '09:30 AM' },
-    { id: 3, type: 'income', title: 'Pembayaran Uang Semester', amount: '+ Rp 1.500.000', name: 'Siti Aminah (XI-IPA)', time: '08:15 AM' },
-    { id: 4, type: 'income', title: 'Pembayaran Uang Komite', amount: '+ Rp 250.000', name: 'Budi Santoso (XII-IPS)', time: 'Kemarin, 14:20' },
-  ];
+
 
   return (
     <>
@@ -56,12 +152,12 @@ export default function DashboardPage() {
               <p className="text-blue-100 text-[13px] font-medium mb-0.5">Saldo Bersih Total</p>
               <div className="flex items-start gap-1 text-white">
                 <span className="text-base font-medium mt-1">Rp</span>
-                <span className="text-3xl font-bold tracking-tight leading-none">33.200.000</span>
+                <span className="text-3xl font-bold tracking-tight leading-none">{stats.saldoBersih.toLocaleString('id-ID')}</span>
               </div>
               
               <div className="flex items-center gap-1.5 mt-3 text-[11px] text-blue-50 bg-white/10 border border-white/10 backdrop-blur-md w-fit px-3 py-1.5 rounded-full">
                 <TrendingUp size={12} className="text-green-300" />
-                <span className="font-medium">Pemasukan: +Rp 45.5jt</span>
+                <span className="font-medium">Pemasukan: +Rp {(stats.pemasukanBulanIni/1000000).toFixed(1)}jt</span>
               </div>
             </div>
 
@@ -105,8 +201,8 @@ export default function DashboardPage() {
               <AlertCircle size={20} />
             </div>
             <div className="flex-1">
-              <h4 className="text-white text-sm font-bold">45 Siswa Menunggak</h4>
-              <p className="text-[11px] text-gray-400 mt-0.5">Lebih dari 30 hari. Cek sekarang &gt;</p>
+              <h4 className="text-white text-sm font-bold">{stats.tunggakanCount} Tagihan Menunggak</h4>
+              <p className="text-[11px] text-gray-400 mt-0.5">Segera cek rincian tagihan &gt;</p>
             </div>
           </div>
 
@@ -125,7 +221,7 @@ export default function DashboardPage() {
                   </div>
                   <div className="text-right">
                     <p className={`text-[13px] font-bold ${act.type === 'income' ? 'text-green-500' : 'text-red-500'}`}>
-                      {act.type === 'income' ? '+' : '-'} {act.amount.replace(/^[+-]\s*/, '')}
+                      {act.amount}
                     </p>
                     <p className="text-gray-400 text-[11px] mt-0.5">{act.time}</p>
                   </div>
@@ -159,30 +255,30 @@ export default function DashboardPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           <StatCard
             title="Total Pemasukan (Bulan ini)"
-            value="Rp 45.500.000"
+            value={`Rp ${stats.pemasukanBulanIni.toLocaleString('id-ID')}`}
             icon={TrendingUp}
             colorClass="green"
-            trend={{ value: 12.5, isPositive: true }}
+            trend={{ value: 0, isPositive: true }}
             delay={0.1}
           />
           <StatCard
             title="Total Pengeluaran (Bulan ini)"
-            value="Rp 12.300.000"
+            value={`Rp ${stats.pengeluaranBulanIni.toLocaleString('id-ID')}`}
             icon={TrendingDown}
             colorClass="pink"
-            trend={{ value: 4.2, isPositive: false }}
+            trend={{ value: 0, isPositive: false }}
             delay={0.2}
           />
           <StatCard
             title="Saldo Bersih"
-            value="Rp 33.200.000"
+            value={`Rp ${stats.saldoBersih.toLocaleString('id-ID')}`}
             icon={Wallet}
             colorClass="blue"
             delay={0.3}
           />
           <StatCard
             title="Total Siswa Aktif"
-            value="845"
+            value={stats.totalSiswa.toString()}
             icon={Users}
             colorClass="purple"
             delay={0.4}
@@ -227,8 +323,8 @@ export default function DashboardPage() {
               <div className="space-y-3">
                 <div className="p-4 rounded-xl border border-white/10 bg-white/[0.02] flex items-center justify-between">
                   <div>
-                    <h4 className="font-medium text-white text-sm">45 Siswa Menunggak Uang Komite</h4>
-                    <p className="text-xs text-text-secondary mt-1">Melewati jatuh tempo lebih dari 30 hari.</p>
+                    <h4 className="font-medium text-white text-sm">{stats.tunggakanCount} Tagihan Menunggak</h4>
+                    <p className="text-xs text-text-secondary mt-1">Cek riwayat pembayaran & piutang siswa.</p>
                   </div>
                   <Link href="/dashboard/laporan/tunggakan" className="text-sm text-text-secondary hover:text-white transition-colors">
                     Detail &rarr;
@@ -266,7 +362,7 @@ export default function DashboardPage() {
                       <div className="flex items-center justify-between mb-1">
                         <p className="text-sm font-medium text-white truncate pr-2">{activity.title}</p>
                         <span className={`text-sm font-medium whitespace-nowrap ${activity.type === 'income' ? 'text-green-500' : 'text-red-500'}`}>
-                          {activity.type === 'income' ? '+' : '-'}{activity.amount.replace(/^[+-]\s*/, '')}
+                          {activity.amount}
                         </span>
                       </div>
                       <div className="flex items-center justify-between">

@@ -6,26 +6,70 @@ import { Calendar, Upload, FileText, ArrowLeft, Image as ImageIcon } from 'lucid
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import Link from 'next/link';
+import { createClient } from '@/lib/supabase/client';
 
 export default function InputPengeluaranPage() {
   const router = useRouter();
+  const supabase = createClient();
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [nominal, setNominal] = useState('');
   
-  const dummyKategori = [
-    'Operasional', 'Honor', 'ATK', 'Kegiatan Siswa', 'Pemeliharaan', 'Lain-lain'
-  ];
+  const [nominal, setNominal] = useState('');
+  const [tanggal, setTanggal] = useState('');
+  const [namaPengeluaran, setNamaPengeluaran] = useState('');
+  const [penerima, setPenerima] = useState('');
+  const [deskripsi, setDeskripsi] = useState('');
+  
+  const [kategoriList, setKategoriList] = useState<any[]>([]);
+  const [selectedKategori, setSelectedKategori] = useState('');
+  const [activeTahunAjaran, setActiveTahunAjaran] = useState<any>(null);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  React.useEffect(() => {
+    const fetchMasterData = async () => {
+      const [katRes, tahunRes] = await Promise.all([
+        supabase.from('kategori_pengeluaran').select('*').eq('is_active', true),
+        supabase.from('tahun_ajaran').select('*').eq('is_active', true)
+      ]);
+      
+      if (katRes.data) setKategoriList(katRes.data);
+      if (tahunRes.data && tahunRes.data.length > 0) setActiveTahunAjaran(tahunRes.data[0]);
+    };
+    fetchMasterData();
+  }, []);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!selectedKategori) return toast.error('Kategori wajib dipilih');
+    if (!activeTahunAjaran) return toast.error('Tahun ajaran aktif tidak ditemukan');
+
     setIsSubmitting(true);
     
-    // Simulate API call
-    setTimeout(() => {
-      setIsSubmitting(false);
+    try {
+      const dateStr = new Date().toISOString().slice(0,10).replace(/-/g,'');
+      const randomStr = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+      const no_bukti = `OUT-${dateStr}-${randomStr}`;
+
+      const { error } = await (supabase
+        .from('pengeluaran') as any)
+        .insert([{
+          kategori_id: selectedKategori,
+          tahun_ajaran_id: activeTahunAjaran.id,
+          no_bukti,
+          nama_pengeluaran: namaPengeluaran,
+          deskripsi,
+          jumlah: parseFloat(nominal),
+          tanggal,
+          penerima
+        }]);
+
+      if (error) throw error;
+
       toast.success('Pengeluaran berhasil dicatat!');
       router.push('/dashboard/keuangan/pengeluaran');
-    }, 1500);
+    } catch (error: any) {
+      toast.error('Gagal mencatat pengeluaran: ' + error.message);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -65,10 +109,15 @@ export default function InputPengeluaranPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             <div className="space-y-2">
               <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-1">Kategori</label>
-              <select required className="w-full rounded-2xl bg-black/20 border border-white/10 px-4 py-3.5 text-sm text-white focus:outline-none focus:border-red-500 transition-colors appearance-none">
-                <option value="" disabled selected>Pilih Kategori...</option>
-                {dummyKategori.map(k => (
-                  <option key={k} value={k} className="bg-[#242426] text-white">{k}</option>
+              <select 
+                value={selectedKategori}
+                onChange={e => setSelectedKategori(e.target.value)}
+                required 
+                className="w-full rounded-2xl bg-black/20 border border-white/10 px-4 py-3.5 text-sm text-white focus:outline-none focus:border-red-500 transition-colors appearance-none"
+              >
+                <option value="" disabled>Pilih Kategori...</option>
+                {kategoriList.map(k => (
+                  <option key={k.id} value={k.id} className="bg-[#242426] text-white">{k.nama}</option>
                 ))}
               </select>
             </div>
@@ -79,6 +128,8 @@ export default function InputPengeluaranPage() {
                 <Calendar size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
                 <input 
                   type="date"
+                  value={tanggal}
+                  onChange={e => setTanggal(e.target.value)}
                   required
                   className="w-full rounded-2xl bg-black/20 border border-white/10 py-3.5 pl-11 pr-4 text-sm text-white focus:outline-none focus:border-red-500 transition-colors"
                 />
@@ -92,6 +143,8 @@ export default function InputPengeluaranPage() {
               <FileText size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
               <input 
                 type="text"
+                value={namaPengeluaran}
+                onChange={e => setNamaPengeluaran(e.target.value)}
                 placeholder="Contoh: Pembelian ATK untuk Ujian Akhir"
                 required
                 className="w-full rounded-2xl bg-black/20 border border-white/10 py-3.5 pl-11 pr-4 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-red-500 transition-colors"
@@ -103,6 +156,8 @@ export default function InputPengeluaranPage() {
             <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-1">Penerima / Toko (Opsional)</label>
             <input 
               type="text"
+              value={penerima}
+              onChange={e => setPenerima(e.target.value)}
               placeholder="Contoh: Toko Buku Sejahtera"
               className="w-full rounded-2xl bg-black/20 border border-white/10 py-3.5 px-4 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-red-500 transition-colors"
             />
@@ -111,6 +166,8 @@ export default function InputPengeluaranPage() {
           <div className="space-y-2">
             <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-1">Keterangan / Deskripsi</label>
             <textarea 
+              value={deskripsi}
+              onChange={e => setDeskripsi(e.target.value)}
               className="w-full rounded-2xl bg-black/20 border border-white/10 px-4 py-3.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-red-500 transition-colors min-h-[100px] resize-y"
               placeholder="Tambahkan detail pengeluaran jika diperlukan..."
             />

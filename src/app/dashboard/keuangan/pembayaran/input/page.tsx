@@ -7,33 +7,85 @@ import { useRouter } from 'next/navigation';
 import { Badge } from '@/components/ui/Badge';
 import { toast } from 'sonner';
 import Link from 'next/link';
+import { createClient } from '@/lib/supabase/client';
 
 export default function InputPembayaranPage() {
   const router = useRouter();
+  const supabase = createClient();
   const [search, setSearch] = useState('');
+  const [siswaResults, setSiswaResults] = useState<any[]>([]);
   const [selectedSiswa, setSelectedSiswa] = useState<any>(null);
+  const [tagihanList, setTagihanList] = useState<any[]>([]);
   const [selectedTagihan, setSelectedTagihan] = useState<any>(null);
   const [nominalBayar, setNominalBayar] = useState('');
   const [metode, setMetode] = useState('TUNAI');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Dummy search results
-  const siswaResults = search.length > 2 ? [
-    { id: '1', nis: '2425001', nama: 'Ahmad Faisal', kelas: 'X-1' }
-  ] : [];
+  // Fetch siswa based on search
+  React.useEffect(() => {
+    const searchSiswa = async () => {
+      if (search.length > 2) {
+        const { data } = await supabase
+          .from('siswa')
+          .select('*')
+          .or(`nama_lengkap.ilike.%${search}%,nis.ilike.%${search}%`)
+          .limit(5);
+        setSiswaResults(data || []);
+      } else {
+        setSiswaResults([]);
+      }
+    };
+    const timeoutId = setTimeout(searchSiswa, 500);
+    return () => clearTimeout(timeoutId);
+  }, [search]);
 
-  const dummyTagihan = [
-    { id: 't1', jenis: 'Uang Komite', periode: 'Tahun 2025/2026', sisa: 3000000, status: 'BELUM_LUNAS' }
-  ];
+  // Fetch tagihan when siswa is selected
+  React.useEffect(() => {
+    if (selectedSiswa) {
+      const fetchTagihan = async () => {
+        const { data } = await supabase
+          .from('tagihan')
+          .select(`*, jenis_pembayaran(nama)`)
+          .eq('siswa_id', selectedSiswa.id)
+          .neq('status', 'LUNAS');
+        setTagihanList(data || []);
+      };
+      fetchTagihan();
+    } else {
+      setTagihanList([]);
+      setSelectedTagihan(null);
+    }
+  }, [selectedSiswa]);
 
   const handleSubmit = async () => {
     setIsSubmitting(true);
-    // Simulate API call
-    setTimeout(() => {
-      setIsSubmitting(false);
+    try {
+      // Create no_kwitansi format KW-YYYYMMDD-Random
+      const dateStr = new Date().toISOString().slice(0,10).replace(/-/g,'');
+      const randomStr = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+      const no_kwitansi = `KW-${dateStr}-${randomStr}`;
+
+      const { data: newPembayaran, error: errInsert } = await (supabase
+        .from('pembayaran') as any)
+        .insert([{
+          tagihan_id: selectedTagihan.id,
+          siswa_id: selectedSiswa.id,
+          no_kwitansi: no_kwitansi,
+          jumlah: parseFloat(nominalBayar),
+          metode: metode
+        }])
+        .select()
+        .single();
+
+      if (errInsert) throw errInsert;
+
       toast.success('Pembayaran berhasil dicatat!');
       router.push('/dashboard/keuangan/pembayaran');
-    }, 1500);
+    } catch (error: any) {
+      toast.error('Gagal mencatat pembayaran: ' + error.message);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const isFormValid = selectedSiswa && selectedTagihan && nominalBayar && Number(nominalBayar) > 0;
@@ -84,7 +136,7 @@ export default function InputPembayaranPage() {
                       className="p-4 rounded-2xl border border-white/5 bg-white/[0.02] hover:bg-white/[0.05] cursor-pointer transition-colors flex items-center justify-between"
                     >
                       <div>
-                        <p className="font-bold text-white text-[15px]">{siswa.nama}</p>
+                        <p className="font-bold text-white text-[15px]">{siswa.nama_lengkap}</p>
                         <p className="text-xs text-gray-400 mt-0.5">{siswa.nis} • Kelas {siswa.kelas}</p>
                       </div>
                       <ChevronRight size={18} className="text-gray-500" />
@@ -97,7 +149,7 @@ export default function InputPembayaranPage() {
             <div className="flex items-center justify-between p-4 rounded-2xl border border-blue-500/20 bg-blue-500/5">
               <div>
                 <p className="text-xs text-blue-300 font-medium mb-1">Siswa Terpilih</p>
-                <p className="font-bold text-white text-[15px]">{selectedSiswa.nama}</p>
+                <p className="font-bold text-white text-[15px]">{selectedSiswa.nama_lengkap}</p>
                 <p className="text-xs text-gray-400 mt-0.5">{selectedSiswa.nis} • Kelas {selectedSiswa.kelas}</p>
               </div>
               <button onClick={() => setSelectedSiswa(null)} className="text-[13px] text-blue-400 font-medium px-3 py-1.5 rounded-full hover:bg-blue-500/10 transition-colors">
@@ -117,9 +169,12 @@ export default function InputPembayaranPage() {
           </div>
           
           <div className="space-y-3">
-            {dummyTagihan.map(tagihan => (
-              <label 
-                key={tagihan.id} 
+            {tagihanList.length === 0 ? (
+              <p className="text-sm text-gray-400 p-4 border border-white/5 rounded-2xl bg-white/[0.02]">Tidak ada tagihan yang belum lunas untuk siswa ini.</p>
+            ) : (
+              tagihanList.map(tagihan => (
+                <label 
+                  key={tagihan.id} 
                 className={`flex items-start gap-4 p-4 rounded-2xl border cursor-pointer transition-all ${
                   selectedTagihan?.id === tagihan.id ? 'border-blue-500 bg-blue-500/10' : 'border-white/5 bg-white/[0.02] hover:bg-white/[0.04]'
                 }`}
@@ -131,20 +186,20 @@ export default function InputPembayaranPage() {
                   checked={selectedTagihan?.id === tagihan.id}
                   onChange={() => {
                     setSelectedTagihan(tagihan);
-                    setNominalBayar(tagihan.sisa.toString());
+                    setNominalBayar(tagihan.sisa_tagihan.toString());
                   }}
                 />
                 <div className="flex-1 min-w-0">
                   <div className="flex justify-between items-start mb-1 gap-2">
-                    <p className="font-bold text-white text-[14px] truncate">{tagihan.jenis}</p>
+                    <p className="font-bold text-white text-[14px] truncate">{tagihan.jenis_pembayaran?.nama || 'Tagihan'}</p>
                     <span className="text-[11px] font-bold text-red-400 bg-red-500/10 px-2 py-0.5 rounded-md whitespace-nowrap">
-                      Sisa: Rp {tagihan.sisa.toLocaleString('id-ID')}
+                      Sisa: Rp {tagihan.sisa_tagihan.toLocaleString('id-ID')}
                     </span>
                   </div>
                   <p className="text-[12px] text-gray-400">{tagihan.periode}</p>
                 </div>
               </label>
-            ))}
+            )))}
           </div>
         </div>
 

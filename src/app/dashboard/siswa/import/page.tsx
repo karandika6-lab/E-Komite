@@ -70,7 +70,7 @@ export default function ImportSiswaPage() {
       }
 
       // 5. Insert to Supabase (Upsert to handle duplicates by NIS)
-      const { error } = await supabase
+      const { error } = await (supabase as any)
         .from('siswa')
         .upsert(siswaData, { onConflict: 'nis' });
 

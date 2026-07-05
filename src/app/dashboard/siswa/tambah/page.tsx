@@ -30,7 +30,7 @@ export default function TambahSiswaPage() {
     setIsSubmitting(true);
     
     try {
-      const { data, error } = await supabase
+      const { data, error } = await (supabase as any)
         .from('siswa')
         .insert([
           {

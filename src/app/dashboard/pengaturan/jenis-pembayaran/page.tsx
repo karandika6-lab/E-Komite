@@ -82,14 +82,14 @@ export default function JenisPembayaranPage() {
       };
 
       if (editingItem) {
-        const { error } = await supabase
+        const { error } = await (supabase as any)
           .from('jenis_pembayaran')
           .update(payload)
           .eq('id', editingItem.id);
         if (error) throw error;
         toast.success('Data berhasil diperbarui');
       } else {
-        const { error } = await supabase
+        const { error } = await (supabase as any)
           .from('jenis_pembayaran')
           .insert([{ ...payload, kode: generateKode(nama) + '_' + Math.floor(Math.random()*1000) }]);
         if (error) throw error;

@@ -5,16 +5,20 @@ import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import { format } from 'date-fns';
 import { id as localeId } from 'date-fns/locale';
+import { useSearchParams } from 'next/navigation';
+import { Suspense } from 'react';
 
-export default function DetailSiswaPage({ params }: { params: { id: string } }) {
+function DetailSiswaContent() {
+  const searchParams = useSearchParams();
+  const id = searchParams.get('id');
   const [student, setStudent] = useState<any>(null);
   const [tagihanList, setTagihanList] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const supabase = createClient();
 
   useEffect(() => {
-    fetchSiswaDetail();
-  }, [params.id]);
+    if (id) fetchSiswaDetail();
+  }, [id]);
 
   const fetchSiswaDetail = async () => {
     try {
@@ -23,21 +27,21 @@ export default function DetailSiswaPage({ params }: { params: { id: string } }) 
       const { data: siswaData, error: siswaErr } = await supabase
         .from('siswa')
         .select('*')
-        .eq('id', params.id)
+        .eq('id', id as string)
         .single();
         
       if (siswaErr) throw siswaErr;
       
       setStudent({
-        id: siswaData.id,
-        nis: siswaData.nis,
-        nama: siswaData.nama_lengkap,
-        kelas: siswaData.kelas,
-        angkatan: siswaData.angkatan,
-        status: siswaData.status,
-        ortu: siswaData.nama_ortu || '-',
-        phone: siswaData.no_hp_ortu || '-',
-        alamat: siswaData.alamat || '-',
+        id: (siswaData as any).id,
+        nis: (siswaData as any).nis,
+        nama: (siswaData as any).nama_lengkap,
+        kelas: (siswaData as any).kelas,
+        angkatan: (siswaData as any).angkatan,
+        status: (siswaData as any).status,
+        ortu: (siswaData as any).nama_ortu || '-',
+        phone: (siswaData as any).no_hp_ortu || '-',
+        alamat: (siswaData as any).alamat || '-',
       });
 
       // Fetch Tagihan
@@ -47,12 +51,12 @@ export default function DetailSiswaPage({ params }: { params: { id: string } }) 
           *,
           jenis_pembayaran(nama)
         `)
-        .eq('siswa_id', params.id)
+        .eq('siswa_id', id as string)
         .order('created_at', { ascending: false });
 
       if (tagihanErr) throw tagihanErr;
 
-      const formatted = tagihanData?.map(t => ({
+      const formatted = (tagihanData as any[])?.map(t => ({
         id: t.id,
         nama: t.jenis_pembayaran?.nama + (t.periode ? ` - ${t.periode}` : ''),
         nominal: t.total_tagihan,
@@ -224,5 +228,13 @@ export default function DetailSiswaPage({ params }: { params: { id: string } }) 
 
       </div>
     </div>
+  );
+}
+
+export default function DetailSiswaPage() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <DetailSiswaContent />
+    </Suspense>
   );
 }

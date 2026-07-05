@@ -76,18 +76,18 @@ export default function TahunAjaranPage() {
 
       // If this one is set to active, we might want to deactivate others
       if (payload.is_active) {
-        await supabase.from('tahun_ajaran').update({ is_active: false }).neq('id', '00000000-0000-0000-0000-000000000000'); // update all
+        await (supabase as any).from('tahun_ajaran').update({ is_active: false }).neq('id', '00000000-0000-0000-0000-000000000000'); // update all
       }
 
       if (editingItem) {
-        const { error } = await supabase
+        const { error } = await (supabase as any)
           .from('tahun_ajaran')
           .update(payload)
           .eq('id', editingItem.id);
         if (error) throw error;
         toast.success('Data berhasil diperbarui');
       } else {
-        const { error } = await supabase
+        const { error } = await (supabase as any)
           .from('tahun_ajaran')
           .insert([payload]);
         if (error) throw error;

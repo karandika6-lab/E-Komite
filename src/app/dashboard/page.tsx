@@ -47,7 +47,7 @@ export default function DashboardPage() {
         .gte('tanggal_bayar', firstDayOfMonth)
         .lte('tanggal_bayar', lastDayOfMonth);
       
-      const pemasukanBulanIni = (pemasukanData || []).reduce((acc, curr) => acc + curr.jumlah, 0);
+      const pemasukanBulanIni = ((pemasukanData as any[]) || []).reduce((acc, curr) => acc + curr.jumlah, 0);
 
       // Fetch Pengeluaran Bulan Ini
       const { data: pengeluaranData } = await supabase
@@ -56,13 +56,13 @@ export default function DashboardPage() {
         .gte('tanggal', firstDayOfMonth)
         .lte('tanggal', lastDayOfMonth);
       
-      const pengeluaranBulanIni = (pengeluaranData || []).reduce((acc, curr) => acc + curr.jumlah, 0);
+      const pengeluaranBulanIni = ((pengeluaranData as any[]) || []).reduce((acc, curr) => acc + curr.jumlah, 0);
 
       // Fetch Semua Saldo
       const { data: allPemasukan } = await supabase.from('pembayaran').select('jumlah');
       const { data: allPengeluaran } = await supabase.from('pengeluaran').select('jumlah');
-      const totalPemasukan = (allPemasukan || []).reduce((acc, curr) => acc + curr.jumlah, 0);
-      const totalPengeluaran = (allPengeluaran || []).reduce((acc, curr) => acc + curr.jumlah, 0);
+      const totalPemasukan = ((allPemasukan as any[]) || []).reduce((acc, curr) => acc + curr.jumlah, 0);
+      const totalPengeluaran = ((allPengeluaran as any[]) || []).reduce((acc, curr) => acc + curr.jumlah, 0);
       const saldoBersih = totalPemasukan - totalPengeluaran;
 
       setStats({
@@ -86,7 +86,7 @@ export default function DashboardPage() {
         .order('created_at', { ascending: false })
         .limit(5);
 
-      const formattedPemasukan = (recPemasukan || []).map(p => ({
+      const formattedPemasukan = ((recPemasukan as any[]) || []).map(p => ({
         id: `inc_${p.id}`,
         type: 'income',
         title: p.tagihan?.jenis_pembayaran?.nama || 'Pembayaran Tagihan',
@@ -96,7 +96,7 @@ export default function DashboardPage() {
         rawDate: new Date(p.tanggal_bayar).getTime()
       }));
 
-      const formattedPengeluaran = (recPengeluaran || []).map(p => ({
+      const formattedPengeluaran = ((recPengeluaran as any[]) || []).map(p => ({
         id: `exp_${p.id}`,
         type: 'expense',
         title: p.nama_pengeluaran,

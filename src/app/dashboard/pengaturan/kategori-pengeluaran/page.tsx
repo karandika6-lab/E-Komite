@@ -63,14 +63,14 @@ export default function KategoriPengeluaranPage() {
     setIsSaving(true);
     try {
       if (editingItem) {
-        const { error } = await supabase
+        const { error } = await (supabase as any)
           .from('kategori_pengeluaran')
           .update({ nama })
           .eq('id', editingItem.id);
         if (error) throw error;
         toast.success('Data berhasil diperbarui');
       } else {
-        const { error } = await supabase
+        const { error } = await (supabase as any)
           .from('kategori_pengeluaran')
           .insert([{ nama }]);
         if (error) throw error;

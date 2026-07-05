@@ -102,7 +102,7 @@ export default function SiswaPage() {
       id: 'actions',
       header: 'Aksi',
       cell: ({ row }) => (
-        <Link href={`/dashboard/siswa/${row.original.id}`}>
+        <Link href={`/dashboard/siswa/detail?id=${row.original.id}`}>
           <Button variant="ghost" size="sm" className="text-neon-blue hover:text-white">
             Detail
           </Button>

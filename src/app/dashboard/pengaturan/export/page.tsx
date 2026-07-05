@@ -89,7 +89,7 @@ export default function ExportDataPage() {
           { header: 'Status', key: 'status', width: 15 }
         ];
         
-        (siswaData || []).forEach(s => {
+        ((siswaData as any[]) || []).forEach(s => {
           wsSiswa.addRow({ 
             nis: s.nis, 
             nama: s.nama_lengkap, 
@@ -111,7 +111,7 @@ export default function ExportDataPage() {
         ];
         
         const allTransactions = [
-          ...(pemasukanData || []).map((p: any) => ({
+          ...((pemasukanData as any[]) || []).map((p: any) => ({
             rawDate: new Date(p.tanggal_bayar).getTime(),
             tanggal: format(new Date(p.tanggal_bayar), 'dd-MM-yyyy', { locale: localeId }),
             tipe: 'Pemasukan',
@@ -119,7 +119,7 @@ export default function ExportDataPage() {
             nominal: p.jumlah,
             keterangan: p.keterangan || '-'
           })),
-          ...(pengeluaranData || []).map((p: any) => ({
+          ...((pengeluaranData as any[]) || []).map((p: any) => ({
             rawDate: new Date(p.tanggal).getTime(),
             tanggal: format(new Date(p.tanggal), 'dd-MM-yyyy', { locale: localeId }),
             tipe: 'Pengeluaran',

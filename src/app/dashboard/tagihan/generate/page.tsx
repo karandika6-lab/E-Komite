@@ -25,8 +25,8 @@ export default function GenerateTagihanPage() {
   React.useEffect(() => {
     const fetchMasterData = async () => {
       const [jenisRes, tahunRes] = await Promise.all([
-        supabase.from('jenis_pembayaran').select('*').eq('is_active', true),
-        supabase.from('tahun_ajaran').select('*').eq('is_active', true)
+        (supabase as any).from('jenis_pembayaran').select('*').eq('is_active', true),
+        (supabase as any).from('tahun_ajaran').select('*').eq('is_active', true)
       ]);
       if (jenisRes.data) {
         setJenisList(jenisRes.data);
@@ -49,7 +49,7 @@ export default function GenerateTagihanPage() {
     setIsSubmitting(true);
     try {
       // Build query for students
-      let query = supabase.from('siswa').select('id');
+      let query = (supabase as any).from('siswa').select('id');
       if (targetType === 'kelas') query = query.in('kelas', selectedKelas);
       if (targetType === 'angkatan') query = query.in('angkatan', selectedAngkatan.map(Number));
       query = query.eq('status', 'Aktif');
@@ -61,7 +61,7 @@ export default function GenerateTagihanPage() {
       const jenis = jenisList.find(j => j.id === selectedJenis);
 
       // Mass insert tagihan
-      const tagihanInserts = siswaData.map(s => ({
+      const tagihanInserts = siswaData.map((s: any) => ({
         siswa_id: s.id,
         jenis_pembayaran_id: selectedJenis,
         tahun_ajaran_id: selectedTahun,
@@ -72,7 +72,7 @@ export default function GenerateTagihanPage() {
         jatuh_tempo: jatuhTempo || null
       }));
 
-      const { error: insErr } = await supabase.from('tagihan').insert(tagihanInserts);
+      const { error: insErr } = await (supabase as any).from('tagihan').insert(tagihanInserts);
       if (insErr) throw insErr;
 
       toast.success(`Berhasil membuat ${tagihanInserts.length} tagihan!`);

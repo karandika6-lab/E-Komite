@@ -44,7 +44,7 @@ export default function RiwayatPage() {
       if (expenseErr) throw expenseErr;
 
       // Format and merge
-      const formattedIncomes = (incomeData || []).map(i => ({
+      const formattedIncomes = ((incomeData as any[]) || []).map(i => ({
         id: `inc_${i.id}`,
         type: 'income',
         title: i.tagihan?.jenis_pembayaran?.nama || 'Pembayaran Tagihan',
@@ -54,7 +54,7 @@ export default function RiwayatPage() {
         ref: i.no_kwitansi
       }));
 
-      const formattedExpenses = (expenseData || []).map(e => ({
+      const formattedExpenses = ((expenseData as any[]) || []).map(e => ({
         id: `exp_${e.id}`,
         type: 'expense',
         title: e.nama_pengeluaran,
@@ -215,12 +215,12 @@ export default function RiwayatPage() {
               
               {/* List Wrapper */}
               <div className="bg-[#1c1c1e] md:bg-transparent rounded-[20px] md:rounded-none border border-white/5 md:border-none overflow-hidden space-y-0 md:space-y-3">
-                {items.map((item, index) => (
+                {(items as any[]).map((item, index) => (
                   <div 
                     key={item.id} 
                     onClick={() => toast.info(`Menampilkan detail transaksi ${item.ref}`)}
                     className={`flex items-center gap-3 p-4 md:rounded-2xl md:bg-[#242426] md:border md:border-white/5 hover:bg-white/[0.03] transition-colors cursor-pointer ${
-                    index !== items.length - 1 ? 'border-b border-white/5 md:border-none' : ''
+                    index !== (items as any[]).length - 1 ? 'border-b border-white/5 md:border-none' : ''
                   }`}>
                     {/* Icon */}
                     <div className={`w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 ${

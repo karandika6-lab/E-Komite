@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { Card } from '@/components/ui/Card';
 import { 
   TrendingUp, TrendingDown, Users, Calendar, 
-  BarChart, PieChart, FileText, Activity, ArrowRight, Download 
+  BarChart, PieChart, FileText, Activity, ArrowRight, Download, Loader2
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { Button } from '@/components/ui/Button';
@@ -190,9 +190,14 @@ export default function LaporanHubPage() {
           <h1 className="text-2xl font-bold text-white mb-2">Pusat Laporan Keuangan</h1>
           <p className="text-sm text-text-secondary">Pilih jenis laporan yang ingin Anda lihat atau cetak.</p>
         </div>
-        <Button onClick={handleExportAll} disabled={isExporting} size="lg" className="bg-green-600 hover:bg-green-700 disabled:opacity-50">
-          {isExporting ? <span className="animate-spin text-white">...</span> : <Download size={18} className="mr-2" />}
-          Unduh Seluruh Laporan (Excel)
+        <Button 
+          variant="outline" 
+          onClick={handleExportAll} 
+          disabled={isExporting} 
+          className="text-sm font-medium border-white/20 text-text-primary hover:bg-white/5 hover:border-white/40 hover:text-white"
+        >
+          {isExporting ? <Loader2 size={16} className="mr-2 animate-spin text-text-secondary" /> : <Download size={16} className="mr-2 text-neon-blue" />}
+          Unduh Semua (Excel)
         </Button>
       </div>
 

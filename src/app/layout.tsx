@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import { Toaster } from "sonner";
 import "./globals.css";
+import { CapacitorHardwareBackButton } from "@/components/CapacitorHardwareBackButton";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 
@@ -25,6 +26,7 @@ export default function RootLayout({
   return (
     <html lang="id">
       <body className={`${inter.variable} font-sans antialiased`}>
+        <CapacitorHardwareBackButton />
         {children}
         <Toaster position="top-center" theme="dark" richColors />
       </body>

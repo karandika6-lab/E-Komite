@@ -23,52 +23,34 @@ export default function RiwayatPage() {
   const fetchHistory = async () => {
     setIsLoading(true);
     try {
-      // Fetch Incomes (Pembayaran)
-      const { data: incomeData, error: incomeErr } = await supabase
-        .from('pembayaran')
+      const { data, error } = await supabase
+        .from('buku_kas')
         .select(`
-          id, tanggal_bayar, no_kwitansi, jumlah,
-          tagihan (jenis_pembayaran (nama)),
-          siswa (nama_lengkap, kelas)
+          id, tanggal, uraian, kas_masuk, kas_keluar, 
+          siswa (nama_lengkap, angkatan),
+          kategori_buku_kas (nama)
         `);
 
-      if (incomeErr) throw incomeErr;
+      if (error) throw error;
 
-      // Fetch Expenses (Pengeluaran)
-      const { data: expenseData, error: expenseErr } = await supabase
-        .from('pengeluaran')
-        .select(`
-          id, tanggal, no_bukti, jumlah, nama_pengeluaran, penerima
-        `);
+      const formatted = ((data as any[]) || []).map(item => {
+        const isIncome = item.kas_masuk > 0;
+        return {
+          id: `bk_${item.id}`,
+          type: isIncome ? 'income' : 'expense',
+          title: item.kategori_buku_kas?.nama || (isIncome ? 'Pemasukan' : 'Pengeluaran'),
+          amount: isIncome ? item.kas_masuk : item.kas_keluar,
+          name: item.siswa ? `${item.siswa.nama_lengkap} (Angkatan ${item.siswa.angkatan})` : item.uraian,
+          date: item.tanggal,
+          ref: 'BK-' + item.id.substring(0, 8)
+        };
+      });
 
-      if (expenseErr) throw expenseErr;
-
-      // Format and merge
-      const formattedIncomes = ((incomeData as any[]) || []).map(i => ({
-        id: `inc_${i.id}`,
-        type: 'income',
-        title: i.tagihan?.jenis_pembayaran?.nama || 'Pembayaran Tagihan',
-        amount: i.jumlah,
-        name: `${i.siswa?.nama_lengkap} (${i.siswa?.kelas})`,
-        date: i.tanggal_bayar,
-        ref: i.no_kwitansi
-      }));
-
-      const formattedExpenses = ((expenseData as any[]) || []).map(e => ({
-        id: `exp_${e.id}`,
-        type: 'expense',
-        title: e.nama_pengeluaran,
-        amount: e.jumlah,
-        name: e.penerima || 'Pengeluaran',
-        date: e.tanggal,
-        ref: e.no_bukti
-      }));
-
-      const merged = [...formattedIncomes, ...formattedExpenses].sort((a, b) => 
+      const sorted = formatted.sort((a, b) => 
         new Date(b.date).getTime() - new Date(a.date).getTime()
       );
 
-      setHistoryData(merged);
+      setHistoryData(sorted);
     } catch (error: any) {
       toast.error('Gagal mengambil histori: ' + error.message);
     } finally {

@@ -3,7 +3,8 @@
 import React from 'react';
 import { 
   TrendingUp, TrendingDown, Wallet, Users, 
-  CreditCard, Upload, FileText, BarChart, Calendar, RefreshCcw, Settings, AlertCircle, CheckCircle2
+  CreditCard, Upload, FileText, BarChart, Calendar, RefreshCcw, Settings, AlertCircle, CheckCircle2,
+  BookOpen, History, Info
 } from 'lucide-react';
 import { StatCard } from '@/components/ui/StatCard';
 import { Card } from '@/components/ui/Card';
@@ -40,29 +41,20 @@ export default function DashboardPage() {
       // Fetch Tunggakan Count
       const { count: tunggakanCount } = await supabase.from('tagihan').select('*', { count: 'exact', head: true }).gt('sisa_tagihan', 0);
 
-      // Fetch Pemasukan Bulan Ini
-      const { data: pemasukanData } = await supabase
-        .from('pembayaran')
-        .select('jumlah')
-        .gte('tanggal_bayar', firstDayOfMonth)
-        .lte('tanggal_bayar', lastDayOfMonth);
-      
-      const pemasukanBulanIni = ((pemasukanData as any[]) || []).reduce((acc, curr) => acc + curr.jumlah, 0);
-
-      // Fetch Pengeluaran Bulan Ini
-      const { data: pengeluaranData } = await supabase
-        .from('pengeluaran')
-        .select('jumlah')
+      // Fetch Pemasukan & Pengeluaran Bulan Ini dari Buku Kas
+      const { data: bukuKasData } = await supabase
+        .from('buku_kas')
+        .select('kas_masuk, kas_keluar')
         .gte('tanggal', firstDayOfMonth)
         .lte('tanggal', lastDayOfMonth);
       
-      const pengeluaranBulanIni = ((pengeluaranData as any[]) || []).reduce((acc, curr) => acc + curr.jumlah, 0);
+      const pemasukanBulanIni = ((bukuKasData as any[]) || []).reduce((acc, curr) => acc + (curr.kas_masuk || 0), 0);
+      const pengeluaranBulanIni = ((bukuKasData as any[]) || []).reduce((acc, curr) => acc + (curr.kas_keluar || 0), 0);
 
       // Fetch Semua Saldo
-      const { data: allPemasukan } = await supabase.from('pembayaran').select('jumlah');
-      const { data: allPengeluaran } = await supabase.from('pengeluaran').select('jumlah');
-      const totalPemasukan = ((allPemasukan as any[]) || []).reduce((acc, curr) => acc + curr.jumlah, 0);
-      const totalPengeluaran = ((allPengeluaran as any[]) || []).reduce((acc, curr) => acc + curr.jumlah, 0);
+      const { data: allBukuKas } = await supabase.from('buku_kas').select('kas_masuk, kas_keluar');
+      const totalPemasukan = ((allBukuKas as any[]) || []).reduce((acc, curr) => acc + (curr.kas_masuk || 0), 0);
+      const totalPengeluaran = ((allBukuKas as any[]) || []).reduce((acc, curr) => acc + (curr.kas_keluar || 0), 0);
       const saldoBersih = totalPemasukan - totalPengeluaran;
 
       setStats({
@@ -73,54 +65,40 @@ export default function DashboardPage() {
         tunggakanCount: tunggakanCount || 0
       });
 
-      // Fetch Recent Activity (Gabungan Pemasukan & Pengeluaran)
-      const { data: recPemasukan } = await supabase
-        .from('pembayaran')
-        .select(`id, jumlah, tanggal_bayar, siswa(nama_lengkap, kelas), tagihan(jenis_pembayaran(nama))`)
+      // Fetch Recent Activity (5 terakhir dari Buku Kas)
+      const { data: recentBukuKas } = await supabase
+        .from('buku_kas')
+        .select(`id, tanggal, uraian, kas_masuk, kas_keluar, siswa(nama_lengkap, angkatan), kategori_buku_kas(nama)`)
         .order('created_at', { ascending: false })
         .limit(5);
 
-      const { data: recPengeluaran } = await supabase
-        .from('pengeluaran')
-        .select(`id, jumlah, tanggal, nama_pengeluaran, penerima`)
-        .order('created_at', { ascending: false })
-        .limit(5);
+      const merged = ((recentBukuKas as any[]) || []).map(p => {
+        const isIncome = p.kas_masuk > 0;
+        return {
+          id: p.id,
+          type: isIncome ? 'income' : 'expense',
+          title: p.kategori_buku_kas?.nama || (isIncome ? 'Pemasukan' : 'Pengeluaran'),
+          amount: `${isIncome ? '+' : '-'} Rp ${(isIncome ? p.kas_masuk : p.kas_keluar).toLocaleString('id-ID')}`,
+          name: p.siswa ? `${p.siswa.nama_lengkap} (Angkatan ${p.siswa.angkatan})` : p.uraian,
+          time: format(new Date(p.tanggal), 'dd MMM HH:mm', { locale: localeId }),
+          rawDate: new Date(p.tanggal).getTime()
+        };
+      });
 
-      const formattedPemasukan = ((recPemasukan as any[]) || []).map(p => ({
-        id: `inc_${p.id}`,
-        type: 'income',
-        title: p.tagihan?.jenis_pembayaran?.nama || 'Pembayaran Tagihan',
-        amount: `+ Rp ${p.jumlah.toLocaleString('id-ID')}`,
-        name: `${p.siswa?.nama_lengkap} (${p.siswa?.kelas})`,
-        time: format(new Date(p.tanggal_bayar), 'dd MMM HH:mm', { locale: localeId }),
-        rawDate: new Date(p.tanggal_bayar).getTime()
-      }));
-
-      const formattedPengeluaran = ((recPengeluaran as any[]) || []).map(p => ({
-        id: `exp_${p.id}`,
-        type: 'expense',
-        title: p.nama_pengeluaran,
-        amount: `- Rp ${p.jumlah.toLocaleString('id-ID')}`,
-        name: p.penerima,
-        time: format(new Date(p.tanggal), 'dd MMM HH:mm', { locale: localeId }),
-        rawDate: new Date(p.tanggal).getTime()
-      }));
-
-      const merged = [...formattedPemasukan, ...formattedPengeluaran].sort((a, b) => b.rawDate - a.rawDate).slice(0, 5);
       setRecentActivity(merged);
     } catch (err) {
       console.error('Error fetching dashboard data:', err);
     }
   };
   const quickMenus = [
-    { name: 'Data Siswa', icon: Users, href: '/dashboard/siswa', color: 'blue' },
-    { name: 'Input Pembayaran', icon: CreditCard, href: '/dashboard/keuangan/pembayaran/input', color: 'green' },
-    { name: 'Pengeluaran', icon: Upload, href: '/dashboard/keuangan/pengeluaran/input', color: 'pink' },
+    { name: 'Buku Kas', icon: Wallet, href: '/dashboard/buku-kas', color: 'green' },
+    { name: 'Riwayat', icon: History, href: '/dashboard/riwayat', color: 'pink' },
     { name: 'Tagihan', icon: FileText, href: '/dashboard/tagihan', color: 'orange' },
+    { name: 'Data Siswa', icon: Users, href: '/dashboard/siswa', color: 'blue' },
     { name: 'Laporan', icon: BarChart, href: '/dashboard/laporan', color: 'purple' },
-    { name: 'Anggaran', icon: Calendar, href: '/dashboard/keuangan/anggaran', color: 'blue' },
     { name: 'Sync Sheets', icon: RefreshCcw, href: '/dashboard/pengaturan/google-sheets', color: 'green' },
     { name: 'Pengaturan', icon: Settings, href: '/dashboard/profil', color: 'text-text-secondary' },
+    { name: 'Tentang', icon: Info, href: '/dashboard/tentang', color: 'blue' },
   ];
 
 
@@ -326,7 +304,7 @@ export default function DashboardPage() {
                     <h4 className="font-medium text-white text-sm">{stats.tunggakanCount} Tagihan Menunggak</h4>
                     <p className="text-xs text-text-secondary mt-1">Cek riwayat pembayaran & piutang siswa.</p>
                   </div>
-                  <Link href="/dashboard/laporan/tunggakan" className="text-sm text-text-secondary hover:text-white transition-colors">
+                  <Link href="/dashboard/laporan" className="text-sm text-text-secondary hover:text-white transition-colors">
                     Detail &rarr;
                   </Link>
                 </div>

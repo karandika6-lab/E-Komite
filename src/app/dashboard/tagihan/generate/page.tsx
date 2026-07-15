@@ -12,14 +12,13 @@ export default function GenerateTagihanPage() {
   const router = useRouter();
   const supabase = createClient();
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [targetType, setTargetType] = useState('kelas'); // 'kelas', 'angkatan', 'semua'
+  const [targetType, setTargetType] = useState('angkatan'); // 'angkatan', 'semua'
   const [jenisList, setJenisList] = useState<any[]>([]);
   const [tahunList, setTahunList] = useState<any[]>([]);
   const [selectedJenis, setSelectedJenis] = useState('');
   const [selectedTahun, setSelectedTahun] = useState('');
   const [periode, setPeriode] = useState('Juli');
   const [jatuhTempo, setJatuhTempo] = useState('');
-  const [selectedKelas, setSelectedKelas] = useState<string[]>([]);
   const [selectedAngkatan, setSelectedAngkatan] = useState<string[]>([]);
 
   React.useEffect(() => {
@@ -43,14 +42,12 @@ export default function GenerateTagihanPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedJenis || !selectedTahun) return toast.error('Lengkapi data tagihan');
-    if (targetType === 'kelas' && selectedKelas.length === 0) return toast.error('Pilih minimal satu kelas');
     if (targetType === 'angkatan' && selectedAngkatan.length === 0) return toast.error('Pilih minimal satu angkatan');
 
     setIsSubmitting(true);
     try {
       // Build query for students
       let query = (supabase as any).from('siswa').select('id');
-      if (targetType === 'kelas') query = query.in('kelas', selectedKelas);
       if (targetType === 'angkatan') query = query.in('angkatan', selectedAngkatan.map(Number));
       query = query.eq('status', 'Aktif');
 
@@ -169,16 +166,7 @@ export default function GenerateTagihanPage() {
             <h2 className="text-[16px] font-bold text-white">2. Target Penerima Tagihan</h2>
           </div>
 
-          <div className="flex gap-4 mb-6 overflow-x-auto no-scrollbar pb-2">
-             <button 
-               type="button"
-               onClick={() => setTargetType('kelas')}
-               className={`px-5 py-2.5 rounded-xl text-sm font-bold whitespace-nowrap transition-colors ${
-                 targetType === 'kelas' ? 'bg-purple-500/20 text-purple-400 border border-purple-500/30' : 'bg-white/5 text-gray-400 hover:bg-white/10'
-               }`}
-             >
-               Berdasarkan Kelas
-             </button>
+           <div className="flex gap-4 mb-6 overflow-x-auto no-scrollbar pb-2">
              <button 
                type="button"
                onClick={() => setTargetType('angkatan')}
@@ -200,27 +188,6 @@ export default function GenerateTagihanPage() {
           </div>
 
           <div className="bg-black/20 rounded-2xl p-5 border border-white/5">
-             {targetType === 'kelas' && (
-               <div className="space-y-4">
-                 <p className="text-[13px] text-gray-400">Pilih satu atau beberapa kelas yang akan menerima tagihan ini.</p>
-                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                    {['X-1', 'X-2', 'XI-IPA 1', 'XI-IPS 1', 'XII-IPA 1'].map((kls) => (
-                      <label key={kls} className="flex items-center gap-3 p-3 rounded-xl bg-[#1c1c1e] border border-white/5 cursor-pointer hover:border-purple-500/30 transition-colors">
-                        <input 
-                          type="checkbox" 
-                          checked={selectedKelas.includes(kls)}
-                          onChange={(e) => {
-                            if (e.target.checked) setSelectedKelas([...selectedKelas, kls]);
-                            else setSelectedKelas(selectedKelas.filter(k => k !== kls));
-                          }}
-                          className="w-4 h-4 rounded border-gray-600 text-purple-600 focus:ring-purple-600 focus:ring-offset-gray-900 bg-gray-700" 
-                        />
-                        <span className="text-sm font-medium text-white">{kls}</span>
-                      </label>
-                    ))}
-                 </div>
-               </div>
-             )}
              {targetType === 'angkatan' && (
                <div className="space-y-4">
                  <p className="text-[13px] text-gray-400">Pilih tahun angkatan siswa.</p>

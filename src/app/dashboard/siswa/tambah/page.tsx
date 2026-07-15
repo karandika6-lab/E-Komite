@@ -18,7 +18,6 @@ export default function TambahSiswaPage() {
     nis: '',
     jenis_kelamin: 'Laki-laki',
     status: 'Aktif',
-    kelas: 'X-1',
     angkatan: new Date().getFullYear().toString(),
     nama_ortu: '',
     no_hp_ortu: '',
@@ -38,7 +37,7 @@ export default function TambahSiswaPage() {
             nis: formData.nis,
             jenis_kelamin: formData.jenis_kelamin,
             status: formData.status,
-            kelas: formData.kelas,
+            kelas: '-', // Default since kelas is removed from UI
             angkatan: parseInt(formData.angkatan),
             nama_ortu: formData.nama_ortu,
             no_hp_ortu: formData.no_hp_ortu,
@@ -140,20 +139,7 @@ export default function TambahSiswaPage() {
             <h2 className="text-[16px] font-bold text-white">Akademik</h2>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-            <div className="space-y-2">
-              <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-1">Kelas Saat Ini</label>
-              <select 
-                value={formData.kelas}
-                onChange={(e) => setFormData({...formData, kelas: e.target.value})}
-                className="w-full rounded-2xl bg-[#1c1c1e] border border-white/10 py-3.5 px-4 text-sm text-white focus:outline-none focus:border-orange-500 transition-colors"
-              >
-                <option value="X-1">X-1</option>
-                <option value="X-2">X-2</option>
-                <option value="XI-IPA 1">XI-IPA 1</option>
-                <option value="XII-IPS 1">XII-IPS 1</option>
-              </select>
-            </div>
+          <div className="grid grid-cols-1 md:grid-cols-1 gap-5">
             <div className="space-y-2">
               <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-1">Angkatan / Tahun Masuk</label>
               <input 

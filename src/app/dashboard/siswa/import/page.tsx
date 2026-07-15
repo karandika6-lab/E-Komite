@@ -46,19 +46,14 @@ export default function ImportSiswaPage() {
         if (rowNumber > 1) {
           const nis = row.getCell(1).text?.toString().trim();
           const nama = row.getCell(2).text?.toString().trim();
-          const kelas = row.getCell(3).text?.toString().trim();
-          const angkatan = row.getCell(4).text?.toString().trim();
-          const noHp = row.getCell(5).text?.toString().trim() || null;
-          const alamat = row.getCell(6).text?.toString().trim() || null;
+          const angkatan = row.getCell(3).text?.toString().trim();
 
-          if (nis && nama && kelas && angkatan) {
+          if (nis && nama && angkatan) {
              siswaData.push({
                nis: nis,
                nama_lengkap: nama,
-               kelas: kelas,
+               kelas: '-', // Nilai default karena kolom ditiadakan di excel
                angkatan: parseInt(angkatan, 10),
-               no_hp_ortu: noHp,
-               alamat: alamat,
                status: 'Aktif'
              });
           }
@@ -66,7 +61,7 @@ export default function ImportSiswaPage() {
       });
 
       if (siswaData.length === 0) {
-         throw new Error('Tidak ada data valid yang ditemukan (kolom wajib: NIS, Nama, Kelas, Angkatan)');
+         throw new Error('Tidak ada data valid yang ditemukan (kolom wajib: NIS, Nama Lengkap, Angkatan)');
       }
 
       // 5. Insert to Supabase (Upsert to handle duplicates by NIS)
@@ -98,10 +93,7 @@ export default function ImportSiswaPage() {
     const columns = [
       { header: 'NIS', key: 'nis', width: 15 },
       { header: 'Nama Lengkap', key: 'nama', width: 35 },
-      { header: 'Kelas', key: 'kelas', width: 15 },
-      { header: 'Angkatan', key: 'angkatan', width: 15 },
-      { header: 'Nomor HP Ortu', key: 'nohp', width: 20 },
-      { header: 'Alamat', key: 'alamat', width: 45 }
+      { header: 'Angkatan', key: 'angkatan', width: 15 }
     ];
     
     worksheet.columns = columns;
@@ -131,9 +123,9 @@ export default function ImportSiswaPage() {
     });
 
     // Add Dummy Data
-    worksheet.addRow({ nis: '2425001', nama: 'Ahmad Faisal', kelas: 'X-1', angkatan: '2024', nohp: '081234567890', alamat: 'Jl. Merdeka No. 10' });
-    worksheet.addRow({ nis: '2425002', nama: 'Siti Aminah', kelas: 'X-1', angkatan: '2024', nohp: '081987654321', alamat: 'Jl. Mawar No. 5' });
-    worksheet.addRow({ nis: '2425003', nama: 'Budi Santoso', kelas: 'X-2', angkatan: '2024', nohp: '082212345678', alamat: 'Jl. Melati No. 8' });
+    worksheet.addRow({ nis: '2425001', nama: 'Ahmad Faisal', angkatan: '2024' });
+    worksheet.addRow({ nis: '2425002', nama: 'Siti Aminah', angkatan: '2024' });
+    worksheet.addRow({ nis: '2425003', nama: 'Budi Santoso', angkatan: '2024' });
 
     // Style Data Rows
     worksheet.eachRow((row, rowNumber) => {

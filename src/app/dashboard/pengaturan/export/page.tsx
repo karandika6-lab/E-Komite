@@ -84,7 +84,6 @@ export default function ExportDataPage() {
         wsSiswa.columns = [
           { header: 'NIS', key: 'nis', width: 15 },
           { header: 'Nama Lengkap', key: 'nama', width: 35 },
-          { header: 'Kelas', key: 'kelas', width: 15 },
           { header: 'Angkatan', key: 'angkatan', width: 15 },
           { header: 'Status', key: 'status', width: 15 }
         ];
@@ -93,7 +92,6 @@ export default function ExportDataPage() {
           wsSiswa.addRow({ 
             nis: s.nis, 
             nama: s.nama_lengkap, 
-            kelas: s.kelas, 
             angkatan: s.angkatan, 
             status: s.status
           });

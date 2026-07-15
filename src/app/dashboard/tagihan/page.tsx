@@ -30,7 +30,7 @@ export default function TagihanPage() {
         .from('tagihan')
         .select(`
           *,
-          siswa (nama_lengkap, kelas),
+          siswa (nama_lengkap, angkatan),
           jenis_pembayaran (nama)
         `)
         .order('created_at', { ascending: false });
@@ -40,7 +40,7 @@ export default function TagihanPage() {
       const formatted = data?.map((item: any) => ({
         id: item.id,
         siswa: item.siswa?.nama_lengkap || '-',
-        kelas: item.siswa?.kelas || '-',
+        angkatan: item.siswa?.angkatan || '-',
         jenis: item.jenis_pembayaran?.nama || '-',
         periode: item.periode || '-',
         nominal: item.total_tagihan,
@@ -73,7 +73,7 @@ export default function TagihanPage() {
       cell: ({ row }) => (
         <div>
           <div className="font-medium text-white">{row.getValue('siswa')}</div>
-          <div className="text-xs text-text-tertiary">Kelas: {row.original.kelas}</div>
+          <div className="text-xs text-text-tertiary">Angkatan: {row.original.angkatan}</div>
         </div>
       ),
     },

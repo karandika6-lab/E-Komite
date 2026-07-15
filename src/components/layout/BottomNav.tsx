@@ -3,13 +3,13 @@
 import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, Wallet, Clock, User } from 'lucide-react';
+import { Home, Wallet, BookOpen, User, History } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 const navItems = [
   { name: 'Beranda', href: '/dashboard', icon: Home },
-  { name: 'Keuangan', href: '/dashboard/keuangan', icon: Wallet },
-  { name: 'Riwayat', href: '/dashboard/riwayat', icon: Clock },
+  { name: 'Buku Kas', href: '/dashboard/buku-kas', icon: Wallet },
+  { name: 'Riwayat', href: '/dashboard/riwayat', icon: History },
   { name: 'Profil', href: '/dashboard/profil', icon: User },
 ];
 

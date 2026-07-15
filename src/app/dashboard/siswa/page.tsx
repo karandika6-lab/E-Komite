@@ -27,26 +27,50 @@ export default function SiswaPage() {
     try {
       const { data, error } = await supabase
         .from('siswa')
-        .select('*')
+        .select('*, tagihan(sisa_tagihan, status)')
         .order('nama_lengkap', { ascending: true });
 
       if (error) throw error;
       
-      const formatted = data?.map((item: any) => ({
-        id: item.id,
-        nis: item.nis,
-        nama: item.nama_lengkap,
-        kelas: item.kelas,
-        angkatan: item.angkatan,
-        status: item.status,
-        statusBayar: 'Lunas' // Placeholder until tagihan logic is ready
-      })) || [];
+      const formatted = data?.map((item: any) => {
+        let statusBayar = 'Lunas';
+        if (item.tagihan && item.tagihan.length > 0) {
+          const adaTunggakan = item.tagihan.some((t: any) => t.sisa_tagihan > 0 && t.status === 'BELUM_LUNAS');
+          const adaCicilan = item.tagihan.some((t: any) => t.sisa_tagihan > 0 && t.status === 'CICILAN');
+          
+          if (adaTunggakan) statusBayar = 'Tunggakan';
+          else if (adaCicilan) statusBayar = 'Cicilan';
+        }
+
+        return {
+          id: item.id,
+          nis: item.nis,
+          nama: item.nama_lengkap,
+          kelas: item.kelas,
+          angkatan: item.angkatan,
+          status: item.status,
+          statusBayar: statusBayar
+        };
+      }) || [];
       
       setDataSiswa(formatted);
     } catch (error: any) {
       toast.error('Gagal mengambil data siswa: ' + error.message);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleDelete = async (id: string, name: string) => {
+    if (window.confirm(`Apakah Anda yakin ingin menghapus siswa ${name}? Data ini dan tagihannya akan terhapus permanen dari sistem.`)) {
+      try {
+        const { error } = await supabase.from('siswa').delete().eq('id', id);
+        if (error) throw error;
+        toast.success(`Data siswa ${name} berhasil dihapus.`);
+        fetchSiswa(); // Refresh table
+      } catch (error: any) {
+        toast.error('Gagal menghapus siswa: ' + error.message);
+      }
     }
   };
 
@@ -66,10 +90,6 @@ export default function SiswaPage() {
       cell: ({ row }) => (
         <div className="font-medium text-white">{row.getValue('nama')}</div>
       ),
-    },
-    {
-      accessorKey: 'kelas',
-      header: 'Kelas',
     },
     {
       accessorKey: 'angkatan',
@@ -102,11 +122,21 @@ export default function SiswaPage() {
       id: 'actions',
       header: 'Aksi',
       cell: ({ row }) => (
-        <Link href={`/dashboard/siswa/detail?id=${row.original.id}`}>
-          <Button variant="ghost" size="sm" className="text-neon-blue hover:text-white">
-            Detail
+        <div className="flex gap-2">
+          <Link href={`/dashboard/siswa/detail?id=${row.original.id}`}>
+            <Button variant="ghost" size="sm" className="text-neon-blue hover:text-white">
+              Detail
+            </Button>
+          </Link>
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            className="text-red-400 hover:text-red-300 hover:bg-red-500/10"
+            onClick={() => handleDelete(row.original.id, row.original.nama)}
+          >
+            Hapus
           </Button>
-        </Link>
+        </div>
       ),
     },
   ];

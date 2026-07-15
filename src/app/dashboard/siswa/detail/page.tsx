@@ -36,7 +36,6 @@ function DetailSiswaContent() {
         id: (siswaData as any).id,
         nis: (siswaData as any).nis,
         nama: (siswaData as any).nama_lengkap,
-        kelas: (siswaData as any).kelas,
         angkatan: (siswaData as any).angkatan,
         status: (siswaData as any).status,
         ortu: (siswaData as any).nama_ortu || '-',
@@ -111,7 +110,7 @@ function DetailSiswaContent() {
              <div className="flex items-center gap-2 mb-4 relative z-10">
                <span className="text-sm font-medium text-blue-400">{student.nis}</span>
                <span className="w-1 h-1 rounded-full bg-gray-600" />
-               <span className="text-sm font-medium text-gray-400">Kelas {student.kelas}</span>
+               <span className="text-sm font-medium text-gray-400">Angkatan {student.angkatan}</span>
              </div>
 
              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-green-500/10 border border-green-500/20 text-green-400 text-[11px] font-bold uppercase tracking-wider relative z-10">

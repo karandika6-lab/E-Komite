@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { 
   Home, Wallet, Clock, User, Users, FileText, 
-  Settings, ChevronRight, School, LogOut, ChevronLeft
+  Settings, ChevronRight, School, LogOut, ChevronLeft, BookOpen, History, BarChart
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -13,8 +13,9 @@ const mainNavItems = [
   { name: 'Dashboard', href: '/dashboard', icon: Home },
   { name: 'Siswa', href: '/dashboard/siswa', icon: Users },
   { name: 'Tagihan', href: '/dashboard/tagihan', icon: FileText },
-  { name: 'Keuangan', href: '/dashboard/keuangan', icon: Wallet },
-  { name: 'Laporan', href: '/dashboard/laporan', icon: Clock },
+  { name: 'Buku Kas', href: '/dashboard/buku-kas', icon: Wallet },
+  { name: 'Riwayat', href: '/dashboard/riwayat', icon: History },
+  { name: 'Laporan', href: '/dashboard/laporan', icon: BarChart },
 ];
 
 const settingNavItems = [

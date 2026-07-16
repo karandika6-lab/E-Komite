@@ -102,7 +102,7 @@ export default function LandingPage() {
             </p>
 
             <div className="flex flex-col sm:flex-row items-center gap-4 justify-center md:justify-start" id="download">
-              <a href="/E-Komite-Release-Signed.apk" download className="w-full sm:w-auto">
+              <a href="/E-Komite-Latest.apk" download className="w-full sm:w-auto">
                 <button className="w-full px-8 py-4 rounded-2xl bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white font-bold flex items-center justify-center gap-3 shadow-lg shadow-blue-500/25 transition-all hover:scale-105 active:scale-95">
                   <Download size={20} />
                   Unduh APK Android

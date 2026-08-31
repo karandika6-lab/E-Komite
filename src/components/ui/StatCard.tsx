@@ -11,11 +11,12 @@ interface StatCardProps {
     value: number;
     isPositive: boolean;
   };
+  subtext?: string;
   colorClass: 'blue' | 'green' | 'pink' | 'purple' | 'orange';
   delay?: number;
 }
 
-export function StatCard({ title, value, icon: Icon, trend, colorClass, delay = 0 }: StatCardProps) {
+export function StatCard({ title, value, icon: Icon, trend, subtext, colorClass, delay = 0 }: StatCardProps) {
   const bgGlowStyles = {
     blue: 'bg-blue-500/[0.05]',
     green: 'bg-emerald-500/[0.05]',
@@ -51,9 +52,11 @@ export function StatCard({ title, value, icon: Icon, trend, colorClass, delay = 
         <div className="flex flex-col mt-auto relative z-10">
           <h3 className="text-2xl font-bold text-white tracking-tight">{value}</h3>
           
-          {/* Reserve space for trend to ensure equal heights if some cards lack it */}
+          {/* Reserve space for trend / subtext */}
           <div className="h-6 mt-2 flex items-center">
-            {trend && (
+            {subtext ? (
+              <span className="text-xs text-text-tertiary font-medium">{subtext}</span>
+            ) : trend ? (
               <div className="flex items-center space-x-2">
                 <span className={`text-xs font-medium ${
                   trend.isPositive ? 'text-green-500' : 'text-red-500'
@@ -62,7 +65,7 @@ export function StatCard({ title, value, icon: Icon, trend, colorClass, delay = 
                 </span>
                 <span className="text-xs text-text-tertiary">dari bulan lalu</span>
               </div>
-            )}
+            ) : null}
           </div>
         </div>
       </Card>

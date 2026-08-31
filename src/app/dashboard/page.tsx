@@ -18,6 +18,8 @@ export default function DashboardPage() {
   const [stats, setStats] = React.useState({
     pemasukanBulanIni: 0,
     pengeluaranBulanIni: 0,
+    totalPemasukan: 0,
+    totalPengeluaran: 0,
     saldoBersih: 0,
     totalSiswa: 0,
     tunggakanCount: 0
@@ -32,8 +34,12 @@ export default function DashboardPage() {
   const fetchDashboardData = async () => {
     try {
       const now = new Date();
-      const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
-      const lastDayOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString();
+      const year = now.getFullYear();
+      const monthNum = now.getMonth(); // 0-11
+      const monthStr = String(monthNum + 1).padStart(2, '0');
+      const firstDayStr = `${year}-${monthStr}-01`;
+      const lastDayNum = new Date(year, monthNum + 1, 0).getDate();
+      const lastDayStr = `${year}-${monthStr}-${String(lastDayNum).padStart(2, '0')}`;
 
       // Fetch Siswa Count
       const { count: siswaCount } = await supabase.from('siswa').select('*', { count: 'exact', head: true }).eq('status', 'Aktif');
@@ -45,21 +51,23 @@ export default function DashboardPage() {
       const { data: bukuKasData } = await supabase
         .from('buku_kas')
         .select('kas_masuk, kas_keluar')
-        .gte('tanggal', firstDayOfMonth)
-        .lte('tanggal', lastDayOfMonth);
+        .gte('tanggal', firstDayStr)
+        .lte('tanggal', lastDayStr);
       
-      const pemasukanBulanIni = ((bukuKasData as any[]) || []).reduce((acc, curr) => acc + (curr.kas_masuk || 0), 0);
-      const pengeluaranBulanIni = ((bukuKasData as any[]) || []).reduce((acc, curr) => acc + (curr.kas_keluar || 0), 0);
+      const pemasukanBulanIni = ((bukuKasData as any[]) || []).reduce((acc, curr) => acc + (Number(curr.kas_masuk) || 0), 0);
+      const pengeluaranBulanIni = ((bukuKasData as any[]) || []).reduce((acc, curr) => acc + (Number(curr.kas_keluar) || 0), 0);
 
       // Fetch Semua Saldo
       const { data: allBukuKas } = await supabase.from('buku_kas').select('kas_masuk, kas_keluar');
-      const totalPemasukan = ((allBukuKas as any[]) || []).reduce((acc, curr) => acc + (curr.kas_masuk || 0), 0);
-      const totalPengeluaran = ((allBukuKas as any[]) || []).reduce((acc, curr) => acc + (curr.kas_keluar || 0), 0);
+      const totalPemasukan = ((allBukuKas as any[]) || []).reduce((acc, curr) => acc + (Number(curr.kas_masuk) || 0), 0);
+      const totalPengeluaran = ((allBukuKas as any[]) || []).reduce((acc, curr) => acc + (Number(curr.kas_keluar) || 0), 0);
       const saldoBersih = totalPemasukan - totalPengeluaran;
 
       setStats({
         pemasukanBulanIni,
         pengeluaranBulanIni,
+        totalPemasukan,
+        totalPengeluaran,
         saldoBersih,
         totalSiswa: siswaCount || 0,
         tunggakanCount: tunggakanCount || 0
@@ -135,7 +143,7 @@ export default function DashboardPage() {
               
               <div className="flex items-center gap-1.5 mt-3 text-[11px] text-blue-50 bg-white/10 border border-white/10 backdrop-blur-md w-fit px-3 py-1.5 rounded-full">
                 <TrendingUp size={12} className="text-green-300" />
-                <span className="font-medium">Pemasukan: +Rp {(stats.pemasukanBulanIni/1000000).toFixed(1)}jt</span>
+                <span className="font-medium">Total Pemasukan: Rp {stats.totalPemasukan.toLocaleString('id-ID')}</span>
               </div>
             </div>
 
@@ -221,7 +229,9 @@ export default function DashboardPage() {
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
           <div>
             <h1 className="text-2xl font-semibold text-white mb-1">Selamat Pagi, Admin 👋</h1>
-            <p className="text-sm text-text-secondary">Berikut ringkasan data keuangan hari ini, 24 Mei 2026.</p>
+            <p className="text-sm text-text-secondary">
+              Berikut ringkasan data keuangan hari ini, {format(new Date(), 'EEEE, dd MMMM yyyy', { locale: localeId })}.
+            </p>
           </div>
           <div className="flex items-center gap-2 px-3 py-1.5 bg-white/[0.02] border border-white/10 rounded-lg text-text-secondary hover:text-white transition-colors cursor-pointer text-sm font-medium">
             <Calendar size={14} />
@@ -236,7 +246,7 @@ export default function DashboardPage() {
             value={`Rp ${stats.pemasukanBulanIni.toLocaleString('id-ID')}`}
             icon={TrendingUp}
             colorClass="green"
-            trend={{ value: 0, isPositive: true }}
+            subtext={`Total Akumulasi: Rp ${stats.totalPemasukan.toLocaleString('id-ID')}`}
             delay={0.1}
           />
           <StatCard
@@ -244,7 +254,7 @@ export default function DashboardPage() {
             value={`Rp ${stats.pengeluaranBulanIni.toLocaleString('id-ID')}`}
             icon={TrendingDown}
             colorClass="pink"
-            trend={{ value: 0, isPositive: false }}
+            subtext={`Total Akumulasi: Rp ${stats.totalPengeluaran.toLocaleString('id-ID')}`}
             delay={0.2}
           />
           <StatCard
@@ -252,6 +262,7 @@ export default function DashboardPage() {
             value={`Rp ${stats.saldoBersih.toLocaleString('id-ID')}`}
             icon={Wallet}
             colorClass="blue"
+            subtext={`Pemasukan dikurangi Pengeluaran`}
             delay={0.3}
           />
           <StatCard
@@ -259,6 +270,7 @@ export default function DashboardPage() {
             value={stats.totalSiswa.toString()}
             icon={Users}
             colorClass="purple"
+            subtext={`${stats.tunggakanCount} siswa punya tunggakan`}
             delay={0.4}
           />
         </div>

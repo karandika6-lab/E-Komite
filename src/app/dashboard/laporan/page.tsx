@@ -6,11 +6,12 @@ import { Card } from '@/components/ui/Card';
 import { 
   TrendingUp, TrendingDown, Download, Loader2, ArrowRight,
   BookOpen, Clock, Wallet, GraduationCap, Heart, Shield,
-  Users, Shirt, Award, TreePine, Sparkles, Building
+  Users, Shirt, Award, TreePine, Sparkles, Building,
+  FileText, Share2, Filter, Printer, FileCheck
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { Button } from '@/components/ui/Button';
-import { exportLaporanLengkapToExcel } from '@/utils/reportGenerator';
+import { exportLaporanLengkapToExcel, exportRekapTagihanPDFLandscape, RekapTagihanSiswaItem } from '@/utils/reportGenerator';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
@@ -151,12 +152,31 @@ function LaporanCard({ item, index, kategoriMap }: { item: typeof laporanMasuk[0
 
 export default function LaporanHubPage() {
   const [isExporting, setIsExporting] = React.useState(false);
+  const [isExportingPdf, setIsExportingPdf] = React.useState(false);
   const [kategoriMap, setKategoriMap] = React.useState<Record<string, string>>({});
+  const [angkatanList, setAngkatanList] = React.useState<string[]>([]);
+  const [selectedAngkatan, setSelectedAngkatan] = React.useState<string>('Semua');
+  const [selectedStatus, setSelectedStatus] = React.useState<string>('Semua');
   const supabase = createClient();
 
   React.useEffect(() => {
     fetchKategoriMap();
+    fetchAngkatanList();
   }, []);
+
+  const fetchAngkatanList = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('siswa')
+        .select('angkatan');
+      if (!error && data) {
+        const distinct = Array.from(new Set(data.map((item: any) => String(item.angkatan)).filter(Boolean))).sort().reverse();
+        setAngkatanList(distinct);
+      }
+    } catch (err) {
+      console.error('Failed to load angkatan list:', err);
+    }
+  };
 
   const fetchKategoriMap = async () => {
     try {
@@ -173,6 +193,107 @@ export default function LaporanHubPage() {
       setKategoriMap(map);
     } catch (err) {
       console.error('Failed to load kategori map:', err);
+    }
+  };
+
+  const handleExportRekapTagihanPDF = async () => {
+    setIsExportingPdf(true);
+    try {
+      let query = supabase
+        .from('siswa')
+        .select(`
+          id, nis, nama_lengkap, kelas, angkatan, status,
+          tagihan (
+            id, total_tagihan, total_dibayar, sisa_tagihan, status, periode,
+            jenis_pembayaran (nama)
+          )
+        `)
+        .order('nama_lengkap', { ascending: true });
+
+      if (selectedAngkatan && selectedAngkatan !== 'Semua') {
+        query = query.eq('angkatan', selectedAngkatan);
+      }
+
+      const { data: siswaList, error } = await query;
+      if (error) throw error;
+
+      if (!siswaList || siswaList.length === 0) {
+        toast.error('Tidak ada data siswa ditemukan');
+        return;
+      }
+
+      const formattedData: RekapTagihanSiswaItem[] = siswaList.map((item: any) => {
+        const tagihanArr = item.tagihan || [];
+        const totalTagihan = tagihanArr.reduce((sum: number, t: any) => sum + (Number(t.total_tagihan) || 0), 0);
+        const totalDibayar = tagihanArr.reduce((sum: number, t: any) => sum + (Number(t.total_dibayar) || 0), 0);
+        const sisaTagihan = tagihanArr.reduce((sum: number, t: any) => sum + (Number(t.sisa_tagihan) || 0), 0);
+
+        let statusBayar = 'LUNAS';
+        if (tagihanArr.length === 0) {
+          statusBayar = 'TANPA TAGIHAN';
+        } else {
+          const adaBelumLunas = tagihanArr.some((t: any) => t.status === 'BELUM_LUNAS' || t.sisa_tagihan > 0);
+          const adaCicilan = tagihanArr.some((t: any) => t.status === 'CICILAN');
+          const semuaLunas = tagihanArr.every((t: any) => t.status === 'LUNAS' || t.sisa_tagihan === 0);
+
+          if (semuaLunas) {
+            statusBayar = 'LUNAS';
+          } else if (adaCicilan) {
+            statusBayar = 'CICILAN';
+          } else if (adaBelumLunas) {
+            statusBayar = 'BELUM LUNAS';
+          }
+        }
+
+        const rincianTagihan = tagihanArr.map((t: any) => ({
+          nama: (t.jenis_pembayaran?.nama || 'Tagihan') + (t.periode ? ` (${t.periode})` : ''),
+          nominal: Number(t.total_tagihan) || 0,
+          dibayar: Number(t.total_dibayar) || 0,
+          sisa: Number(t.sisa_tagihan) || 0,
+          status: t.status === 'LUNAS' ? 'Lunas' : (t.status === 'CICILAN' ? 'Cicilan' : 'Belum Lunas')
+        }));
+
+        return {
+          id: item.id,
+          nis: item.nis || '-',
+          nama: item.nama_lengkap,
+          kelas: item.kelas || '-',
+          angkatan: item.angkatan,
+          statusBayar,
+          totalTagihan,
+          totalDibayar,
+          sisaTagihan,
+          rincianTagihan
+        };
+      });
+
+      let finalData = formattedData;
+      if (selectedStatus && selectedStatus !== 'Semua') {
+        if (selectedStatus === 'BELUM_LUNAS') {
+          finalData = formattedData.filter(s => s.sisaTagihan > 0 || s.statusBayar === 'BELUM LUNAS' || s.statusBayar === 'CICILAN');
+        } else if (selectedStatus === 'LUNAS') {
+          finalData = formattedData.filter(s => s.statusBayar === 'LUNAS');
+        } else if (selectedStatus === 'CICILAN') {
+          finalData = formattedData.filter(s => s.statusBayar === 'CICILAN');
+        }
+      }
+
+      if (finalData.length === 0) {
+        toast.warning('Tidak ada data siswa yang sesuai dengan filter tersebut.');
+        return;
+      }
+
+      exportRekapTagihanPDFLandscape(
+        finalData,
+        { angkatan: selectedAngkatan, status: selectedStatus },
+        `Rekap_Tagihan_Siswa_${selectedAngkatan !== 'Semua' ? 'Angkatan_' + selectedAngkatan : 'Semua'}_${format(new Date(), 'yyyyMMdd')}`
+      );
+
+      toast.success(`Berhasil mengunduh PDF Rekap Tagihan (${finalData.length} siswa)`);
+    } catch (err: any) {
+      toast.error('Gagal mengunduh PDF: ' + err.message);
+    } finally {
+      setIsExportingPdf(false);
     }
   };
 
@@ -276,6 +397,81 @@ export default function LaporanHubPage() {
           Unduh Semua (Excel)
         </Button>
       </div>
+
+      {/* Featured Card: Unduh Rekap Tagihan Siswa (PDF Landscape) */}
+      <Card glass className="p-5 border-neon-blue/30 bg-gradient-to-r from-neon-blue/10 via-blue-950/20 to-transparent relative overflow-hidden">
+        <div className="flex flex-col gap-4 relative z-10">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-neon-blue to-blue-600 flex items-center justify-center shadow-md shadow-neon-blue/20 shrink-0">
+                <FileText size={20} className="text-white" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2.5 flex-wrap">
+                  <h2 className="text-base font-bold text-white tracking-wide">
+                    Unduh Rekap Tagihan Siswa (PDF Landscape)
+                  </h2>
+                  <span className="whitespace-nowrap shrink-0 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-neon-blue/20 text-neon-blue border border-neon-blue/30">
+                    Siap Share WA & Print
+                  </span>
+                </div>
+                <p className="text-xs text-text-secondary mt-0.5">
+                  Rekapitulasi PDF A4 Landscape berisi daftar seluruh siswa dan status pelunasannya.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-white/10">
+            <div className="flex flex-wrap items-center gap-3">
+              {/* Filter Angkatan */}
+              <div className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-xl px-3 py-1.5 text-xs">
+                <Filter size={14} className="text-neon-blue shrink-0" />
+                <span className="text-text-secondary font-medium">Angkatan:</span>
+                <select
+                  value={selectedAngkatan}
+                  onChange={(e) => setSelectedAngkatan(e.target.value)}
+                  className="bg-transparent text-white font-semibold focus:outline-none cursor-pointer pr-1"
+                >
+                  <option value="Semua" className="bg-[#1e293b] text-white">Semua Angkatan</option>
+                  {angkatanList.map((a) => (
+                    <option key={a} value={a} className="bg-[#1e293b] text-white">Angkatan {a}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Filter Status */}
+              <div className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-xl px-3 py-1.5 text-xs">
+                <span className="text-text-secondary font-medium">Status:</span>
+                <select
+                  value={selectedStatus}
+                  onChange={(e) => setSelectedStatus(e.target.value)}
+                  className="bg-transparent text-white font-semibold focus:outline-none cursor-pointer pr-1"
+                >
+                  <option value="Semua" className="bg-[#1e293b] text-white">Semua Status</option>
+                  <option value="BELUM_LUNAS" className="bg-[#1e293b] text-white">Belum Lunas / Tunggakan</option>
+                  <option value="CICILAN" className="bg-[#1e293b] text-white">Cicilan</option>
+                  <option value="LUNAS" className="bg-[#1e293b] text-white">Lunas</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Download Button */}
+            <Button
+              onClick={handleExportRekapTagihanPDF}
+              disabled={isExportingPdf}
+              className="bg-gradient-to-r from-neon-blue to-blue-600 hover:from-blue-600 hover:to-neon-blue text-white shadow-md shadow-neon-blue/20 text-xs font-bold px-4 py-2 rounded-xl flex items-center gap-2 sm:ml-auto"
+            >
+              {isExportingPdf ? (
+                <Loader2 size={15} className="animate-spin text-white" />
+              ) : (
+                <Download size={15} />
+              )}
+              Unduh PDF Landscape
+            </Button>
+          </div>
+        </div>
+      </Card>
 
       {/* Pemasukan Section */}
       <div>

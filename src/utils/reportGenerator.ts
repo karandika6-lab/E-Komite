@@ -3,6 +3,8 @@ import { saveAs } from 'file-saver';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { logoBase64 } from './logoBase64';
+import { format } from 'date-fns';
+import { id as localeId } from 'date-fns/locale';
 
 export interface ColumnDef {
   header: string;
@@ -581,4 +583,312 @@ export const exportLaporanLengkapToExcel = async (
   const buffer = await workbook.xlsx.writeBuffer();
   saveAs(new Blob([buffer]), `${filename}.xlsx`);
 };
+
+export const applyKopSuratPDFLandscape = (doc: jsPDF) => {
+  // A4 Landscape width is 841.89 pt, height is 595.28 pt
+  // Add Logo at Left
+  try {
+    doc.addImage(logoBase64, 'JPEG', 45, 18, 55, 55);
+  } catch (err) {
+    console.error('Failed to add logo to PDF landscape:', err);
+  }
+
+  // KOP SURAT (Centered at X = 420)
+  doc.setFont('times', 'bold');
+  doc.setFontSize(14);
+  doc.setTextColor(0);
+  doc.text("YAYASAN PONPES DARUL MA'ARIF", 420, 30, { align: 'center' });
+
+  doc.setFont('times', 'normal');
+  doc.setFontSize(9);
+  doc.text('KEMENKUMHAM AHU-0011948.AH.01.04 TAHUN 2015', 420, 42, { align: 'center' });
+
+  doc.setFont('times', 'bold');
+  doc.setFontSize(13);
+  doc.text('MADRASAH ALIYAH (MA) AL-ASROR SEKAMPUNG', 420, 55, { align: 'center' });
+
+  doc.setFont('times', 'italic');
+  doc.setFontSize(9);
+  doc.text('Alamat : Jl. Raya Sekampung Kec. Sekampung Kab. Lampung Timur 34182', 420, 67, { align: 'center' });
+  doc.text('Email : maal_asror@yahoo.co.id', 420, 78, { align: 'center' });
+
+  // Double Separator Line across landscape page (width ~772 pt: from X=35 to X=807)
+  doc.setLineWidth(1.5);
+  doc.line(35, 86, 807, 86);
+  doc.setLineWidth(0.5);
+  doc.line(35, 88, 807, 88);
+};
+
+export interface RekapTagihanSiswaItem {
+  id?: string;
+  nis: string;
+  nama: string;
+  kelas?: string;
+  angkatan: string | number;
+  statusBayar: string;
+  totalTagihan: number;
+  totalDibayar: number;
+  sisaTagihan: number;
+  rincianTagihan: {
+    nama: string;
+    nominal: number;
+    dibayar: number;
+    sisa: number;
+    status: string;
+  }[];
+}
+
+/**
+ * Generate PDF Landscape Rekapitulasi Tagihan dan Status Pembayaran Siswa
+ */
+export const exportRekapTagihanPDFLandscape = (
+  dataSiswa: RekapTagihanSiswaItem[],
+  filterInfo: { angkatan?: string; status?: string } = {},
+  filename: string = `Rekap_Tagihan_Siswa_${format(new Date(), 'yyyyMMdd')}`
+) => {
+  // Create jsPDF instance in Landscape mode ('l', 'pt', 'a4')
+  const doc = new jsPDF('l', 'pt', 'a4');
+
+  // Apply Kop Surat
+  applyKopSuratPDFLandscape(doc);
+
+  // Document Title
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(13);
+  doc.setTextColor(30, 41, 59); // Slate 800
+  doc.text('REKAPITULASI STATUS TAGIHAN & PEMBAYARAN SISWA', 35, 106);
+
+  // Filter Subtitle & Timestamp
+  const filterParts = [];
+  if (filterInfo.angkatan && filterInfo.angkatan !== 'Semua') {
+    filterParts.push(`Angkatan: ${filterInfo.angkatan}`);
+  }
+  if (filterInfo.status && filterInfo.status !== 'Semua') {
+    filterParts.push(`Status Filter: ${filterInfo.status}`);
+  }
+  const dateStr = format(new Date(), 'dd MMMM yyyy, HH:mm', { locale: localeId });
+  const subtitleText = filterParts.length > 0
+    ? `${filterParts.join(' | ')}  •  Dicetak: ${dateStr}`
+    : `Semua Angkatan & Status  •  Dicetak: ${dateStr}`;
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8.5);
+  doc.setTextColor(100, 116, 139); // Slate 500
+  doc.text(subtitleText, 35, 118);
+
+  // Calculate Metrics for Banner
+  const totalSiswa = dataSiswa.length;
+  const grandTotalTagihan = dataSiswa.reduce((acc, s) => acc + s.totalTagihan, 0);
+  const grandTotalDibayar = dataSiswa.reduce((acc, s) => acc + s.totalDibayar, 0);
+  const grandTotalSisa = dataSiswa.reduce((acc, s) => acc + s.sisaTagihan, 0);
+  const percentLunas = grandTotalTagihan > 0 ? ((grandTotalDibayar / grandTotalTagihan) * 100).toFixed(1) : '100';
+
+  // Metrics Banner Container (X: 35 to 807, width = 772, height = 30, Y = 124)
+  const bannerY = 124;
+  doc.setFillColor(241, 245, 249); // Slate 100
+  doc.setDrawColor(203, 213, 225); // Slate 300
+  doc.setLineWidth(0.5);
+  doc.roundedRect(35, bannerY, 772, 28, 4, 4, 'FD');
+
+  // Metric Column widths (5 columns)
+  const colW = 772 / 5;
+  
+  // Col 1: Total Siswa
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8);
+  doc.setTextColor(71, 85, 105);
+  doc.text('TOTAL SISWA:', 35 + 10, bannerY + 12);
+  doc.setFontSize(9);
+  doc.setTextColor(15, 23, 42);
+  doc.text(`${totalSiswa} Siswa`, 35 + 10, bannerY + 23);
+
+  // Col 2: Total Tagihan
+  doc.setFontSize(8);
+  doc.setTextColor(71, 85, 105);
+  doc.text('TOTAL TAGIHAN:', 35 + colW + 10, bannerY + 12);
+  doc.setFontSize(9);
+  doc.setTextColor(15, 23, 42);
+  doc.text(`Rp ${grandTotalTagihan.toLocaleString('id-ID')}`, 35 + colW + 10, bannerY + 23);
+
+  // Col 3: Total Terbayar
+  doc.setFontSize(8);
+  doc.setTextColor(71, 85, 105);
+  doc.text('TOTAL TERBAYAR:', 35 + colW * 2 + 10, bannerY + 12);
+  doc.setFontSize(9);
+  doc.setTextColor(22, 163, 74); // Green
+  doc.text(`Rp ${grandTotalDibayar.toLocaleString('id-ID')}`, 35 + colW * 2 + 10, bannerY + 23);
+
+  // Col 4: Total Tunggakan
+  doc.setFontSize(8);
+  doc.setTextColor(71, 85, 105);
+  doc.text('TOTAL TUNGGAKAN:', 35 + colW * 3 + 10, bannerY + 12);
+  doc.setFontSize(9);
+  doc.setTextColor(220, 38, 38); // Red
+  doc.text(`Rp ${grandTotalSisa.toLocaleString('id-ID')}`, 35 + colW * 3 + 10, bannerY + 23);
+
+  // Col 5: Persentase Pelunasan
+  doc.setFontSize(8);
+  doc.setTextColor(71, 85, 105);
+  doc.text('CAPAIAN PELUNASAN:', 35 + colW * 4 + 10, bannerY + 12);
+  doc.setFontSize(9);
+  doc.setTextColor(2, 132, 199); // Blue
+  doc.text(`${percentLunas}% Terbayar`, 35 + colW * 4 + 10, bannerY + 23);
+
+  // Map dataSiswa to autoTable Rows
+  const tableRows = dataSiswa.map((siswa, idx) => {
+    // Format Rincian Tagihan multi-line string
+    let rincianStr = '';
+    if (!siswa.rincianTagihan || siswa.rincianTagihan.length === 0) {
+      rincianStr = '(Belum ada tagihan)';
+    } else {
+      rincianStr = siswa.rincianTagihan
+        .map(t => {
+          const sisaText = t.sisa > 0 ? ` [Sisa Rp ${t.sisa.toLocaleString('id-ID')}]` : ' [Lunas]';
+          return `• ${t.nama}: Rp ${t.nominal.toLocaleString('id-ID')}${sisaText}`;
+        })
+        .join('\n');
+    }
+
+    const classOrAngkatan = siswa.kelas && siswa.kelas !== '-' ? `${siswa.kelas} (${siswa.angkatan})` : `Angkatan ${siswa.angkatan}`;
+
+    return [
+      idx + 1,
+      siswa.nis || '-',
+      siswa.nama,
+      classOrAngkatan,
+      rincianStr,
+      `Rp ${siswa.totalTagihan.toLocaleString('id-ID')}`,
+      `Rp ${siswa.totalDibayar.toLocaleString('id-ID')}`,
+      `Rp ${siswa.sisaTagihan.toLocaleString('id-ID')}`,
+      siswa.statusBayar
+    ];
+  });
+
+  // Generate Table using autoTable
+  autoTable(doc, {
+    startY: 160,
+    head: [[
+      'No', 'NIS', 'Nama Siswa', 'Kelas / Angkatan', 
+      'Rincian Tagihan & Status', 
+      'Total Tagihan', 'Terbayar', 'Sisa Tunggakan', 'Status'
+    ]],
+    body: tableRows,
+    theme: 'grid',
+    headStyles: {
+      fillColor: [30, 41, 59], // Slate 800
+      textColor: 255,
+      fontStyle: 'bold',
+      fontSize: 8.5,
+      halign: 'center',
+      valign: 'middle'
+    },
+    bodyStyles: {
+      fontSize: 8,
+      cellPadding: 4,
+      valign: 'top',
+      textColor: [30, 41, 59]
+    },
+    alternateRowStyles: {
+      fillColor: [248, 250, 252] // Slate 50
+    },
+    columnStyles: {
+      0: { halign: 'center', cellWidth: 25 },
+      1: { halign: 'center', cellWidth: 55 },
+      2: { cellWidth: 120, fontStyle: 'bold' },
+      3: { halign: 'center', cellWidth: 65 },
+      4: { cellWidth: 252 },
+      5: { halign: 'right', cellWidth: 65 },
+      6: { halign: 'right', cellWidth: 65 },
+      7: { halign: 'right', cellWidth: 70 },
+      8: { halign: 'center', cellWidth: 55 }
+    },
+    didParseCell: (data) => {
+      if (data.section === 'body') {
+        // Highlight Sisa Tunggakan (Index 7)
+        if (data.column.index === 7) {
+          const rawVal = data.cell.text[0] || '';
+          if (rawVal !== 'Rp 0') {
+            data.cell.styles.textColor = [220, 38, 38]; // Red
+            data.cell.styles.fontStyle = 'bold';
+          } else {
+            data.cell.styles.textColor = [22, 163, 74]; // Green
+          }
+        }
+        // Highlight Status (Index 8)
+        if (data.column.index === 8) {
+          const statusText = data.cell.text[0] || '';
+          if (statusText === 'LUNAS') {
+            data.cell.styles.textColor = [22, 163, 74]; // Green
+            data.cell.styles.fontStyle = 'bold';
+          } else if (statusText === 'CICILAN') {
+            data.cell.styles.textColor = [217, 119, 6]; // Amber
+            data.cell.styles.fontStyle = 'bold';
+          } else if (statusText === 'BELUM LUNAS' || statusText === 'TUNGGAKAN') {
+            data.cell.styles.textColor = [220, 38, 38]; // Red
+            data.cell.styles.fontStyle = 'bold';
+          } else {
+            data.cell.styles.textColor = [100, 116, 139]; // Slate
+          }
+        }
+      }
+    }
+  });
+
+  // Check ending Y position for Signature Block
+  let finalY = (doc as any).lastAutoTable?.finalY || 200;
+  if (finalY + 120 > 550) {
+    doc.addPage();
+    applyKopSuratPDFLandscape(doc);
+    finalY = 110;
+  } else {
+    finalY += 20;
+  }
+
+  // TANDA TANGAN BLOCK
+  doc.setFont('times', 'normal');
+  doc.setFontSize(9.5);
+  doc.setTextColor(0);
+
+  // Right Date
+  doc.text(`Sekampung, ${format(new Date(), 'dd MMMM yyyy', { locale: localeId })}`, 680, finalY, { align: 'center' });
+  finalY += 14;
+
+  // Titles: Bendahara Komite (Left X=130), Kepala Madrasah (Right X=680)
+  doc.text('Bendahara Komite', 130, finalY, { align: 'center' });
+  doc.text('Kepala Madrasah', 680, finalY, { align: 'center' });
+
+  finalY += 45;
+
+  doc.setFont('times', 'bold');
+  doc.setFontSize(10);
+  doc.text('ARMIDI, S.Pd.I', 130, finalY, { align: 'center' });
+  doc.text('HERNAWAN, M.Pd', 680, finalY, { align: 'center' });
+
+  finalY += 20;
+  doc.setFont('times', 'normal');
+  doc.setFontSize(9.5);
+  doc.text('Mengetahui,', 405, finalY, { align: 'center' });
+  finalY += 12;
+  doc.text('Ketua Yayasan YPPDM', 405, finalY, { align: 'center' });
+
+  finalY += 45;
+  doc.setFont('times', 'bold');
+  doc.setFontSize(10);
+  doc.text('RIDWAN, S.H.I', 405, finalY, { align: 'center' });
+
+  // Add Page Numbers & Watermark Footer to all pages
+  const pageCount = (doc as any).internal.getNumberOfPages();
+  for (let i = 1; i <= pageCount; i++) {
+    doc.setPage(i);
+    doc.setFont('helvetica', 'italic');
+    doc.setFontSize(7.5);
+    doc.setTextColor(148, 163, 184); // Slate 400
+    doc.text('Dokumen Resmi Sistem Informasi E-Komite MA Al-Asror Sekampung', 35, 582);
+    doc.text(`Halaman ${i} dari ${pageCount}`, 807, 582, { align: 'right' });
+  }
+
+  // Save PDF file
+  doc.save(`${filename}.pdf`);
+};
+
 
